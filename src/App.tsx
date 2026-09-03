@@ -58,7 +58,6 @@ export default function App() {
 
   const session: AppSession = {
     data,
-    setData,
     showToast,
     executeCrud,
     loadAppData,

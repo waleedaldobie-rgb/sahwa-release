@@ -3,8 +3,34 @@ import { AppData, UserPreferences } from '../types';
 import { initElectronMock } from '../services/electronMock';
 import { checkAndSyncStockAlerts } from '../utils/stockAlerts';
 import { ALL_DATA_SLICES, DataRevision, DataSliceName, bumpDataRevision, mergeDataSlices } from '../state/appDataStore';
-import { loadDataSlices } from './dataSlices';
+import { loadDataSlices, SliceApi } from './dataSlices';
 import { SahwaGateway } from './gateway';
+
+function toSliceApi(gateway: SahwaGateway): SliceApi {
+  const api = typeof window !== 'undefined' ? window.electronAPI : undefined;
+  return {
+    getData: () => gateway.getData() as Promise<AppData>,
+    getCustomers: () => gateway.listCustomers() as ReturnType<NonNullable<SliceApi['getCustomers']>>,
+    getOrders: () => gateway.listOrders() as ReturnType<NonNullable<SliceApi['getOrders']>>,
+    getInvoices: () => gateway.listInvoices() as ReturnType<NonNullable<SliceApi['getInvoices']>>,
+    getFabrics: () => gateway.listFabrics() as ReturnType<NonNullable<SliceApi['getFabrics']>>,
+    getAccessories: () => gateway.listAccessories() as ReturnType<NonNullable<SliceApi['getAccessories']>>,
+    getPurchases: () => gateway.listPurchases() as ReturnType<NonNullable<SliceApi['getPurchases']>>,
+    getExpenses: () => gateway.listExpenses() as ReturnType<NonNullable<SliceApi['getExpenses']>>,
+    getCashTransactions: () => gateway.listCashTransactions() as ReturnType<NonNullable<SliceApi['getCashTransactions']>>,
+    getStockMovements: api?.getStockMovements,
+    getOrderMaterialUsages: api?.getOrderMaterialUsages,
+    getOrderEvents: api?.getOrderEvents,
+    notifications: api?.notifications ?? {
+      list: (includeArchived?: boolean) =>
+        gateway.listNotifications(includeArchived) as ReturnType<NonNullable<NonNullable<SliceApi['notifications']>['list']>>,
+      markRead: (id: string) => gateway.markNotificationRead(id) as ReturnType<NonNullable<NonNullable<SliceApi['notifications']>['markRead']>>,
+      markAllRead: () => gateway.markAllNotificationsRead() as ReturnType<NonNullable<NonNullable<SliceApi['notifications']>['markAllRead']>>,
+      clearAll: () => gateway.archiveNotifications() as ReturnType<NonNullable<NonNullable<SliceApi['notifications']>['clearAll']>>,
+      retry: (id: string) => gateway.retryNotification(id) as ReturnType<NonNullable<NonNullable<SliceApi['notifications']>['retry']>>,
+    },
+  };
+}
 
 export interface UseAppBootstrapArgs {
   data: AppData | null;
@@ -72,7 +98,7 @@ export function useAppBootstrap({
   const refreshSlices = useCallback(async (slices: readonly DataSliceName[]): Promise<string[]> => {
     const current = dataRef.current;
     if (!current) return [];
-    const patch = await loadDataSlices(slices, window.electronAPI);
+    const patch = await loadDataSlices(slices, toSliceApi(gateway));
     const mergedData = mergeDataSlices(current, patch);
     const { updatedData, alertMessages } = checkAndSyncStockAlerts(mergedData);
     if (updatedData !== mergedData) await gateway.saveData(updatedData);

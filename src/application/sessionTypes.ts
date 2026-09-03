@@ -1,4 +1,3 @@
-import { Dispatch, SetStateAction } from 'react';
 import { AppData } from '../types';
 import { ToastState } from '../components/ui';
 import { DataSliceName } from '../state/appDataStore';
@@ -14,7 +13,6 @@ export type ExecuteCrud = <T>(label: string, action: () => Promise<T>) => Promis
 
 export interface AppSession {
   data: AppData | null;
-  setData: Dispatch<SetStateAction<AppData | null>>;
   showToast: ShowToast;
   executeCrud: ExecuteCrud;
   loadAppData: () => Promise<string[]>;
