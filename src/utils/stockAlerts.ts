@@ -1,5 +1,98 @@
 import { AppData, NotificationItem } from '../types';
 
+interface StockCheckItem {
+  id: string;
+  name: string;
+  quantity: number;
+  minStock: number;
+  unitLabel: string;
+}
+
+interface StockKindConfig {
+  idPrefix: string;
+  title: string;
+  itemLabel: string;
+  minStockSuffix: string;
+}
+
+const FABRIC_KIND: StockKindConfig = {
+  idPrefix: 'NOTIF-FAB-',
+  title: 'تنبيه حد الطلب الأدنى (أقمشة)',
+  itemLabel: 'القماش',
+  minStockSuffix: ' متر',
+};
+
+const ACCESSORY_KIND: StockKindConfig = {
+  idPrefix: 'NOTIF-ACC-',
+  title: 'تنبيه حد الطلب الأدنى (إكسسوارات)',
+  itemLabel: 'الإكسسوار',
+  minStockSuffix: '',
+};
+
+function findStockNotifIndex(
+  notifications: NotificationItem[],
+  kind: StockKindConfig,
+  item: StockCheckItem,
+): number {
+  return notifications.findIndex(
+    (n) => n.type === 'stock' && (n.id === `${kind.idPrefix}${item.id}` || n.message.includes(`"${item.name}"`)),
+  );
+}
+
+function syncStockItemAlerts(
+  items: StockCheckItem[],
+  kind: StockKindConfig,
+  notificationsList: NotificationItem[],
+  nowFormatted: string,
+  showToastFn: ((msg: string, type: 'warning') => void) | undefined,
+  state: { newAlertsCount: number; alertMessages: string[]; dataModified: boolean },
+): NotificationItem[] {
+  let next = notificationsList;
+
+  for (const item of items) {
+    const isLow = item.quantity <= item.minStock;
+    const notifIndex = findStockNotifIndex(next, kind, item);
+    const alertMsg = `تنبيه مخزون: ${kind.itemLabel} "${item.name}" وصل للحد الأدنى للمخزون (${item.quantity} ${item.unitLabel} المتبقية / الحد الأدنى: ${item.minStock}${kind.minStockSuffix})`;
+
+    if (isLow) {
+      if (notifIndex === -1) {
+        const newNotif: NotificationItem = {
+          id: `${kind.idPrefix}${item.id}`,
+          type: 'stock',
+          title: kind.title,
+          message: alertMsg,
+          date: nowFormatted,
+          read: false,
+        };
+        next = [newNotif, ...next];
+        state.newAlertsCount++;
+        state.alertMessages.push(alertMsg);
+        state.dataModified = true;
+        if (showToastFn) showToastFn(alertMsg, 'warning');
+      } else {
+        const existing = next[notifIndex];
+        if (existing.message !== alertMsg) {
+          next[notifIndex] = {
+            ...existing,
+            message: alertMsg,
+            read: false,
+            date: nowFormatted,
+          };
+          state.newAlertsCount++;
+          state.alertMessages.push(alertMsg);
+          state.dataModified = true;
+          if (showToastFn) showToastFn(alertMsg, 'warning');
+        }
+      }
+    } else if (notifIndex !== -1) {
+      next.splice(notifIndex, 1);
+      state.dataModified = true;
+    }
+  }
+
+  return next;
+}
+
 /**
  * Evaluates stock levels for all fabrics and accessories in appData against their minimum stock thresholds (minStockMeters / minStock).
  * Automatically creates, updates, or clears low stock notifications in appData.notifications.
@@ -13,123 +106,32 @@ export function checkAndSyncStockAlerts(
   }
 
   let notificationsList = [...(appData.notifications || [])];
-  let newAlertsCount = 0;
-  const alertMessages: string[] = [];
-  let dataModified = false;
-
+  const state = { newAlertsCount: 0, alertMessages: [] as string[], dataModified: false };
   const nowFormatted = new Date().toLocaleDateString('ar-SA', { hour: '2-digit', minute: '2-digit' });
 
-  // 1. Check Fabrics against minStockMeters
-  appData.fabrics.forEach((fabric) => {
-    if (typeof fabric.quantityMeters === 'number' && typeof fabric.minStockMeters === 'number') {
-      const isLow = fabric.quantityMeters <= fabric.minStockMeters;
-      const notifIndex = notificationsList.findIndex(
-        (n) => n.type === 'stock' && (n.id === `NOTIF-FAB-${fabric.id}` || n.message.includes(`"${fabric.name}"`))
-      );
+  const fabrics: StockCheckItem[] = appData.fabrics
+    .filter((f) => typeof f.quantityMeters === 'number' && typeof f.minStockMeters === 'number')
+    .map((f) => ({
+      id: f.id,
+      name: f.name,
+      quantity: f.quantityMeters,
+      minStock: f.minStockMeters,
+      unitLabel: 'متر',
+    }));
 
-      const alertMsg = `تنبيه مخزون: القماش "${fabric.name}" وصل للحد الأدنى للمخزون (${fabric.quantityMeters} متر المتبقية / الحد الأدنى: ${fabric.minStockMeters} متر)`;
+  const accessories: StockCheckItem[] = appData.accessories
+    .filter((a) => typeof a.quantity === 'number' && typeof a.minStock === 'number')
+    .map((a) => ({
+      id: a.id,
+      name: a.name,
+      quantity: a.quantity,
+      minStock: a.minStock,
+      unitLabel: a.unit || 'حبة',
+    }));
 
-      if (isLow) {
-        if (notifIndex === -1) {
-          const newNotif: NotificationItem = {
-            id: `NOTIF-FAB-${fabric.id}`,
-            type: 'stock',
-            title: 'تنبيه حد الطلب الأدنى (أقمشة)',
-            message: alertMsg,
-            date: nowFormatted,
-            read: false
-          };
-          notificationsList = [newNotif, ...notificationsList];
-          newAlertsCount++;
-          alertMessages.push(alertMsg);
-          dataModified = true;
-          if (showToastFn) {
-            showToastFn(alertMsg, 'warning');
-          }
-        } else {
-          // If notification already exists, check if message or quantity changed
-          const existing = notificationsList[notifIndex];
-          if (existing.message !== alertMsg) {
-            notificationsList[notifIndex] = {
-              ...existing,
-              message: alertMsg,
-              read: false, // Mark unread again due to stock level change
-              date: nowFormatted
-            };
-            newAlertsCount++;
-            alertMessages.push(alertMsg);
-            dataModified = true;
-            if (showToastFn) {
-              showToastFn(alertMsg, 'warning');
-            }
-          }
-        }
-      } else {
-        // Quantity is above minStock -> clear alert if present
-        if (notifIndex !== -1) {
-          notificationsList.splice(notifIndex, 1);
-          dataModified = true;
-        }
-      }
-    }
-  });
+  notificationsList = syncStockItemAlerts(fabrics, FABRIC_KIND, notificationsList, nowFormatted, showToastFn, state);
+  notificationsList = syncStockItemAlerts(accessories, ACCESSORY_KIND, notificationsList, nowFormatted, showToastFn, state);
 
-  // 2. Check Accessories against minStock
-  appData.accessories.forEach((acc) => {
-    if (typeof acc.quantity === 'number' && typeof acc.minStock === 'number') {
-      const isLow = acc.quantity <= acc.minStock;
-      const notifIndex = notificationsList.findIndex(
-        (n) => n.type === 'stock' && (n.id === `NOTIF-ACC-${acc.id}` || n.message.includes(`"${acc.name}"`))
-      );
-
-      const alertMsg = `تنبيه مخزون: الإكسسوار "${acc.name}" وصل للحد الأدنى للمخزون (${acc.quantity} ${acc.unit || 'حبة'} المتبقية / الحد الأدنى: ${acc.minStock})`;
-
-      if (isLow) {
-        if (notifIndex === -1) {
-          const newNotif: NotificationItem = {
-            id: `NOTIF-ACC-${acc.id}`,
-            type: 'stock',
-            title: 'تنبيه حد الطلب الأدنى (إكسسوارات)',
-            message: alertMsg,
-            date: nowFormatted,
-            read: false
-          };
-          notificationsList = [newNotif, ...notificationsList];
-          newAlertsCount++;
-          alertMessages.push(alertMsg);
-          dataModified = true;
-          if (showToastFn) {
-            showToastFn(alertMsg, 'warning');
-          }
-        } else {
-          // If notification already exists, check if message or quantity changed
-          const existing = notificationsList[notifIndex];
-          if (existing.message !== alertMsg) {
-            notificationsList[notifIndex] = {
-              ...existing,
-              message: alertMsg,
-              read: false, // Mark unread again
-              date: nowFormatted
-            };
-            newAlertsCount++;
-            alertMessages.push(alertMsg);
-            dataModified = true;
-            if (showToastFn) {
-              showToastFn(alertMsg, 'warning');
-            }
-          }
-        }
-      } else {
-        // Quantity is above minStock -> clear alert if present
-        if (notifIndex !== -1) {
-          notificationsList.splice(notifIndex, 1);
-          dataModified = true;
-        }
-      }
-    }
-  });
-
-  // 3. Clean up notifications for deleted fabrics or accessories
   const fabricIds = new Set(appData.fabrics.map((f) => f.id));
   const fabricNames = new Set(appData.fabrics.map((f) => f.name));
   const accIds = new Set(appData.accessories.map((a) => a.id));
@@ -152,17 +154,17 @@ export function checkAndSyncStockAlerts(
   });
 
   if (notificationsList.length !== initialCount) {
-    dataModified = true;
+    state.dataModified = true;
   }
 
-  if (dataModified) {
+  if (state.dataModified) {
     return {
       updatedData: {
         ...appData,
-        notifications: notificationsList
+        notifications: notificationsList,
       },
-      newAlertCount: newAlertsCount,
-      alertMessages
+      newAlertCount: state.newAlertsCount,
+      alertMessages: state.alertMessages,
     };
   }
 
