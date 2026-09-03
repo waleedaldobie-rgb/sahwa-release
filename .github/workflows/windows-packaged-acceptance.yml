@@ -110,6 +110,17 @@ jobs:
           Copy-Item -Path (Join-Path $lightningExtractDir 'package\*') -Destination $lightningTarget -Recurse -Force
           Remove-Item $lightningArchive -Force
           if (-not (Test-Path (Join-Path $lightningTarget 'package.json'))) { throw 'lightningcss Windows native package was not installed.' }
+          $tailwindArchive = (npm pack --silent @tailwindcss/oxide-win32-x64-msvc@4.3.3).Trim()
+          if (-not $tailwindArchive -or -not (Test-Path $tailwindArchive)) { throw 'Tailwind Oxide Windows native package archive was not created.' }
+          $tailwindExtractDir = Join-Path $env:RUNNER_TEMP 'tailwind-oxide-native-package'
+          if (Test-Path $tailwindExtractDir) { Remove-Item $tailwindExtractDir -Recurse -Force }
+          New-Item -ItemType Directory -Force -Path $tailwindExtractDir | Out-Null
+          tar -xzf $tailwindArchive -C $tailwindExtractDir
+          $tailwindTarget = 'node_modules/@tailwindcss/oxide-win32-x64-msvc'
+          New-Item -ItemType Directory -Force -Path $tailwindTarget | Out-Null
+          Copy-Item -Path (Join-Path $tailwindExtractDir 'package\*') -Destination $tailwindTarget -Recurse -Force
+          Remove-Item $tailwindArchive -Force
+          if (-not (Test-Path (Join-Path $tailwindTarget 'package.json'))) { throw 'Tailwind Oxide Windows native package was not installed.' }
 
       - name: Quality gate
         run: npm run quality
