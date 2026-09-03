@@ -76,7 +76,7 @@ jobs:
         env:
           npm_config_python: ${{ env.pythonLocation }}\python.exe
         run: |
-          npm ci --ignore-scripts
+          npm ci --include=optional --ignore-scripts
 
       - name: Quality gate
         run: npm run quality
