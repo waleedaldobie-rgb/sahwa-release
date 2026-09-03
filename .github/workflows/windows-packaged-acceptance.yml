@@ -77,6 +77,7 @@ jobs:
           npm_config_python: ${{ env.pythonLocation }}\python.exe
         run: |
           npm ci --include=optional --ignore-scripts
+          npm install --no-save --no-package-lock --ignore-scripts --force @rollup/rollup-win32-x64-msvc@4.62.4
 
       - name: Quality gate
         run: npm run quality
