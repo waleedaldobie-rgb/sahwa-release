@@ -88,6 +88,17 @@ jobs:
           Copy-Item -Path (Join-Path $extractDir 'package\*') -Destination $target -Recurse -Force
           Remove-Item $archive -Force
           if (-not (Test-Path (Join-Path $target 'package.json'))) { throw 'Rollup Windows native package was not installed.' }
+          $esbuildArchive = (npm pack --silent @esbuild/win32-x64@0.25.12).Trim()
+          if (-not $esbuildArchive -or -not (Test-Path $esbuildArchive)) { throw 'esbuild Windows native package archive was not created.' }
+          $esbuildExtractDir = Join-Path $env:RUNNER_TEMP 'esbuild-native-package'
+          if (Test-Path $esbuildExtractDir) { Remove-Item $esbuildExtractDir -Recurse -Force }
+          New-Item -ItemType Directory -Force -Path $esbuildExtractDir | Out-Null
+          tar -xzf $esbuildArchive -C $esbuildExtractDir
+          $esbuildTarget = 'node_modules/@esbuild/win32-x64'
+          New-Item -ItemType Directory -Force -Path $esbuildTarget | Out-Null
+          Copy-Item -Path (Join-Path $esbuildExtractDir 'package\*') -Destination $esbuildTarget -Recurse -Force
+          Remove-Item $esbuildArchive -Force
+          if (-not (Test-Path (Join-Path $esbuildTarget 'package.json'))) { throw 'esbuild Windows native package was not installed.' }
 
       - name: Quality gate
         run: npm run quality
