@@ -77,7 +77,17 @@ jobs:
           npm_config_python: ${{ env.pythonLocation }}\python.exe
         run: |
           npm ci --include=optional --ignore-scripts
-          npm install --no-save --no-package-lock --ignore-scripts --force @rollup/rollup-win32-x64-msvc@4.62.4
+          $archive = (npm pack --silent @rollup/rollup-win32-x64-msvc@4.62.4).Trim()
+          if (-not $archive -or -not (Test-Path $archive)) { throw 'Rollup Windows native package archive was not created.' }
+          $extractDir = Join-Path $env:RUNNER_TEMP 'rollup-native-package'
+          if (Test-Path $extractDir) { Remove-Item $extractDir -Recurse -Force }
+          New-Item -ItemType Directory -Force -Path $extractDir | Out-Null
+          tar -xzf $archive -C $extractDir
+          $target = 'node_modules/@rollup/rollup-win32-x64-msvc'
+          New-Item -ItemType Directory -Force -Path $target | Out-Null
+          Copy-Item -Path (Join-Path $extractDir 'package\*') -Destination $target -Recurse -Force
+          Remove-Item $archive -Force
+          if (-not (Test-Path (Join-Path $target 'package.json'))) { throw 'Rollup Windows native package was not installed.' }
 
       - name: Quality gate
         run: npm run quality
