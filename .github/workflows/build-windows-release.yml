@@ -70,8 +70,51 @@ jobs:
         env:
           npm_config_ignore_scripts: 'true'
         run: |
-          npm ci --ignore-scripts
-          npm install --no-save --no-package-lock @rollup/rollup-win32-x64-msvc@4.62.4 @playwright/test
+          npm ci --include=optional --ignore-scripts
+          $archive = (npm pack --silent @rollup/rollup-win32-x64-msvc@4.62.4).Trim()
+          if (-not $archive -or -not (Test-Path $archive)) { throw 'Rollup Windows native package archive was not created.' }
+          $extractDir = Join-Path $env:RUNNER_TEMP 'rollup-native-package'
+          if (Test-Path $extractDir) { Remove-Item $extractDir -Recurse -Force }
+          New-Item -ItemType Directory -Force -Path $extractDir | Out-Null
+          tar -xzf $archive -C $extractDir
+          $target = 'node_modules/@rollup/rollup-win32-x64-msvc'
+          New-Item -ItemType Directory -Force -Path $target | Out-Null
+          Copy-Item -Path (Join-Path $extractDir 'package\*') -Destination $target -Recurse -Force
+          Remove-Item $archive -Force
+          if (-not (Test-Path (Join-Path $target 'package.json'))) { throw 'Rollup Windows native package was not installed.' }
+          $esbuildArchive = (npm pack --silent @esbuild/win32-x64@0.25.12).Trim()
+          if (-not $esbuildArchive -or -not (Test-Path $esbuildArchive)) { throw 'esbuild Windows native package archive was not created.' }
+          $esbuildExtractDir = Join-Path $env:RUNNER_TEMP 'esbuild-native-package'
+          if (Test-Path $esbuildExtractDir) { Remove-Item $esbuildExtractDir -Recurse -Force }
+          New-Item -ItemType Directory -Force -Path $esbuildExtractDir | Out-Null
+          tar -xzf $esbuildArchive -C $esbuildExtractDir
+          $esbuildTarget = 'node_modules/@esbuild/win32-x64'
+          New-Item -ItemType Directory -Force -Path $esbuildTarget | Out-Null
+          Copy-Item -Path (Join-Path $esbuildExtractDir 'package\*') -Destination $esbuildTarget -Recurse -Force
+          Remove-Item $esbuildArchive -Force
+          if (-not (Test-Path (Join-Path $esbuildTarget 'package.json'))) { throw 'esbuild Windows native package was not installed.' }
+          $lightningArchive = (npm pack --silent lightningcss-win32-x64-msvc@1.32.0).Trim()
+          if (-not $lightningArchive -or -not (Test-Path $lightningArchive)) { throw 'lightningcss Windows native package archive was not created.' }
+          $lightningExtractDir = Join-Path $env:RUNNER_TEMP 'lightningcss-native-package'
+          if (Test-Path $lightningExtractDir) { Remove-Item $lightningExtractDir -Recurse -Force }
+          New-Item -ItemType Directory -Force -Path $lightningExtractDir | Out-Null
+          tar -xzf $lightningArchive -C $lightningExtractDir
+          $lightningTarget = 'node_modules/lightningcss-win32-x64-msvc'
+          New-Item -ItemType Directory -Force -Path $lightningTarget | Out-Null
+          Copy-Item -Path (Join-Path $lightningExtractDir 'package\*') -Destination $lightningTarget -Recurse -Force
+          Remove-Item $lightningArchive -Force
+          if (-not (Test-Path (Join-Path $lightningTarget 'package.json'))) { throw 'lightningcss Windows native package was not installed.' }
+          $tailwindArchive = (npm pack --silent @tailwindcss/oxide-win32-x64-msvc@4.3.3).Trim()
+          if (-not $tailwindArchive -or -not (Test-Path $tailwindArchive)) { throw 'Tailwind Oxide Windows native package archive was not created.' }
+          $tailwindExtractDir = Join-Path $env:RUNNER_TEMP 'tailwind-oxide-native-package'
+          if (Test-Path $tailwindExtractDir) { Remove-Item $tailwindExtractDir -Recurse -Force }
+          New-Item -ItemType Directory -Force -Path $tailwindExtractDir | Out-Null
+          tar -xzf $tailwindArchive -C $tailwindExtractDir
+          $tailwindTarget = 'node_modules/@tailwindcss/oxide-win32-x64-msvc'
+          New-Item -ItemType Directory -Force -Path $tailwindTarget | Out-Null
+          Copy-Item -Path (Join-Path $tailwindExtractDir 'package\*') -Destination $tailwindTarget -Recurse -Force
+          Remove-Item $tailwindArchive -Force
+          if (-not (Test-Path (Join-Path $tailwindTarget 'package.json'))) { throw 'Tailwind Oxide Windows native package was not installed.' }
 
       - name: Quality gate
         run: npm run quality
