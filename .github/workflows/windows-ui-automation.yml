@@ -1,0 +1,102 @@
+name: Windows UI Automation
+
+on:
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  installed-app-ui:
+    name: Build, install, and test Electron UI on Windows
+    runs-on: windows-2022
+    timeout-minutes: 50
+
+    steps:
+      - name: Checkout PR source
+        uses: actions/checkout@v4
+        with:
+          # Test the exact PR head, not GitHub's synthetic pull_request merge ref.
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Set up Python for native modules
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        shell: pwsh
+        env:
+          npm_config_python: ${{ env.pythonLocation }}\python.exe
+        run: |
+          npm ci
+          npm install --no-save --no-package-lock @playwright/test
+
+      - name: Verify source quality and TypeScript
+        run: |
+          npm run quality
+          npm test -- --run
+
+      - name: Run SQLite integration regression
+        shell: pwsh
+        run: |
+          npm run build:electron
+          npx electron --no-sandbox scripts/integration-regression.cjs
+
+      - name: Build production renderer and Electron files
+        shell: pwsh
+        env:
+          GITHUB_PAGES: 'false'
+          ELECTRON_BUILD: 'true'
+        run: |
+          npm run build
+          npm run build:electron
+
+      - name: Build Windows installer
+        run: npm run dist -- --publish never
+
+      - name: Install Setup.exe silently into an isolated folder
+        shell: pwsh
+        run: |
+          $installer = Get-ChildItem -Path release -Filter '*Setup*.exe' | Select-Object -First 1
+          if (-not $installer) { throw 'Setup.exe was not created.' }
+
+          $installDir = Join-Path $env:RUNNER_TEMP 'SahwaTailoring-Automation'
+          if (Test-Path $installDir) { Remove-Item $installDir -Recurse -Force }
+          New-Item -ItemType Directory -Force -Path $installDir | Out-Null
+
+          $process = Start-Process -FilePath $installer.FullName `
+            -ArgumentList @('/S', "/D=$installDir") `
+            -Wait -PassThru
+          if ($process.ExitCode -ne 0) { throw "Installer exited with code $($process.ExitCode)." }
+
+          $installedExe = Get-ChildItem -Path $installDir -Filter '*.exe' -Recurse |
+            Where-Object { $_.Name -notmatch 'uninstall' } |
+            Select-Object -First 1
+          if (-not $installedExe) { throw 'Installed Electron executable was not found.' }
+          "SAHWA_EXE=$($installedExe.FullName)" >> $env:GITHUB_ENV
+          "SAHWA_TEST_DATA=$(Join-Path $env:RUNNER_TEMP 'SahwaTailoring-Data')" >> $env:GITHUB_ENV
+          "SAHWA_EVIDENCE_DIR=$(Join-Path $env:GITHUB_WORKSPACE 'test-results/ui-automation')" >> $env:GITHUB_ENV
+
+      - name: Run installed Electron Windows acceptance
+        shell: pwsh
+        env:
+          SAHWA_EXPECTED_COMMIT: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: node scripts/windows-acceptance-installed.mjs
+
+      - name: Upload Windows acceptance evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: sahwa-windows-acceptance-${{ github.run_number }}
+          path: test-results/ui-automation/
+          if-no-files-found: warn
+          retention-days: 30

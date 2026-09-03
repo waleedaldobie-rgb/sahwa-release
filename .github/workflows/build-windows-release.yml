@@ -1,0 +1,210 @@
+name: Build, verify, and publish Windows release
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: 'Existing vX.Y.Z tag to build and verify'
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+env:
+  NODE_VERSION: '22'
+
+jobs:
+  build-windows:
+    if: startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch'
+    name: Build, install, and verify Windows x64 installer
+    runs-on: windows-2022
+    timeout-minutes: 60
+
+    steps:
+      - name: Checkout release source
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ inputs.release_tag || github.ref }}
+
+      - name: Resolve release identity
+        id: identity
+        shell: pwsh
+        env:
+          REQUESTED_TAG: ${{ inputs.release_tag }}
+        run: |
+          $tag = if ($env:REQUESTED_TAG) { $env:REQUESTED_TAG } else { $env:GITHUB_REF_NAME }
+          if ($tag -notmatch '^v\d+\.\d+\.\d+$') {
+            throw "Expected a semantic release tag like v1.1.7, got '$tag'."
+          }
+          $commit = (git rev-parse HEAD).Trim()
+          if (-not $commit) { throw 'Unable to resolve release commit.' }
+          "SAHWA_EXPECTED_VERSION=$tag" >> $env:GITHUB_ENV
+          "SAHWA_EXPECTED_COMMIT=$commit" >> $env:GITHUB_ENV
+          "RELEASE_TAG=$tag" >> $env:GITHUB_ENV
+          "release_tag=$tag" >> $env:GITHUB_OUTPUT
+          "release_commit=$commit" >> $env:GITHUB_OUTPUT
+          Write-Host "Release version: $tag"
+          Write-Host "Release commit: $commit"
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+
+      - name: Setup Python for native modules
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Setup MSVC environment
+        uses: ilammy/msvc-dev-cmd@v1
+
+      - name: Install dependencies without prebuilding native modules
+        shell: pwsh
+        env:
+          npm_config_ignore_scripts: 'true'
+        run: |
+          npm ci --ignore-scripts
+          npm install --no-save --no-package-lock @rollup/rollup-win32-x64-msvc@4.62.4 @playwright/test
+
+      - name: Quality gate
+        run: npm run quality
+
+      - name: Unit tests
+        run: npm test -- --run
+
+      - name: Build web production files
+        shell: pwsh
+        env:
+          GITHUB_PAGES: 'false'
+          ELECTRON_BUILD: 'true'
+        run: npm run build
+
+      - name: Build Electron files
+        run: npm run build:electron
+
+      - name: Electron SQLite integration regression
+        shell: pwsh
+        run: npx electron --no-sandbox scripts/integration-regression.cjs
+
+      - name: Build unsigned Windows installer
+        run: npx electron-builder --win --x64 --publish never
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+
+      - name: Verify generated unsigned installer and SHA-256
+        id: installer
+        shell: pwsh
+        run: |
+          $installer = Get-ChildItem -Path release -Filter '*Setup*.exe' -File | Select-Object -First 1
+          if ($null -eq $installer) { throw 'No Windows Setup.exe was generated in release/.' }
+          $hash = (Get-FileHash $installer.FullName -Algorithm SHA256).Hash
+          $signature = Get-AuthenticodeSignature $installer.FullName
+          Write-Host "Installer: $($installer.FullName)"
+          Write-Host "SHA256: $hash"
+          Write-Host "Signature status: $($signature.Status)"
+          "installer=$($installer.FullName)" >> $env:GITHUB_OUTPUT
+          "sha256=$hash" >> $env:GITHUB_OUTPUT
+          @"
+          file=$($installer.Name)
+          sha256=$hash
+          release_tag=$env:RELEASE_TAG
+          commit=$env:SAHWA_EXPECTED_COMMIT
+          signature_status=$($signature.Status)
+          "@ | Set-Content -Path release\SHA256SUMS.txt -Encoding utf8
+
+      - name: Install Setup.exe into isolated runner directory
+        id: install
+        shell: pwsh
+        env:
+          INSTALL_DIR: ${{ runner.temp }}\SahwaTailoring-Automation
+          TEST_DATA_DIR: ${{ runner.temp }}\SahwaTailoring-Data
+          EVIDENCE_DIR: ${{ github.workspace }}\test-results\windows-packaged-acceptance
+        run: |
+          foreach ($path in @($env:INSTALL_DIR, $env:TEST_DATA_DIR, $env:EVIDENCE_DIR)) {
+            if (Test-Path $path) { Remove-Item $path -Recurse -Force }
+            New-Item -ItemType Directory -Force -Path $path | Out-Null
+          }
+          $process = Start-Process -FilePath '${{ steps.installer.outputs.installer }}' `
+            -ArgumentList @('/S', "/D=$env:INSTALL_DIR") -Wait -PassThru
+          if ($process.ExitCode -ne 0) { throw "Installer exited with code $($process.ExitCode)." }
+          $installedExe = Get-ChildItem -Path $env:INSTALL_DIR -Filter '*.exe' -Recurse -File |
+            Where-Object { $_.Name -notmatch 'uninstall|setup' } |
+            Select-Object -First 1
+          if ($null -eq $installedExe) { throw 'Installed Electron executable was not found.' }
+          "SAHWA_EXE=$($installedExe.FullName)" >> $env:GITHUB_ENV
+          "SAHWA_TEST_DATA=$env:TEST_DATA_DIR" >> $env:GITHUB_ENV
+          "SAHWA_EVIDENCE_DIR=$env:EVIDENCE_DIR" >> $env:GITHUB_ENV
+          "installed_exe=$($installedExe.FullName)" >> $env:GITHUB_OUTPUT
+          Write-Host "Installed executable: $($installedExe.FullName)"
+
+      - name: Run Windows Packaged Acceptance
+        id: packaged_acceptance
+        shell: pwsh
+        run: |
+          node scripts/windows-acceptance-installed.mjs
+          if ($LASTEXITCODE -ne 0) { throw "Windows Packaged Acceptance failed with exit code $LASTEXITCODE." }
+          $resultsPath = Join-Path $env:SAHWA_EVIDENCE_DIR 'acceptance-results.json'
+          if (-not (Test-Path $resultsPath)) { throw "Acceptance evidence not found: $resultsPath" }
+          $results = Get-Content -Raw $resultsPath | ConvertFrom-Json
+          if ($results.version -ne $env:SAHWA_EXPECTED_VERSION) {
+            throw "Evidence version '$($results.version)' does not match '$env:SAHWA_EXPECTED_VERSION'."
+          }
+          if ($results.commit -ne $env:SAHWA_EXPECTED_COMMIT) {
+            throw "Evidence commit '$($results.commit)' does not match '$env:SAHWA_EXPECTED_COMMIT'."
+          }
+          $nonPass = @($results.results | Where-Object { $_.status -ne 'PASS' })
+          if ($nonPass.Count -gt 0) {
+            $ids = ($nonPass | ForEach-Object { $_.id }) -join ', '
+            throw "Acceptance contains non-PASS results: $ids"
+          }
+          if (@($results.runtimeErrors).Count -gt 0) {
+            throw 'Acceptance reported renderer/runtime errors.'
+          }
+          Write-Host "WINDOWS_PACKAGED_ACCEPTANCE=PASS"
+
+      - name: Upload Windows acceptance evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: sahwa-windows-packaged-acceptance-${{ steps.identity.outputs.release_tag }}-${{ github.run_number }}
+          if-no-files-found: warn
+          path: |
+            test-results/windows-packaged-acceptance/**
+            release/SHA256SUMS.txt
+            release/*.exe
+            release/*.blockmap
+            release/latest*.yml
+          retention-days: 30
+
+      - name: Create unsigned GitHub prerelease
+        if: steps.packaged_acceptance.outcome == 'success'
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE_TAG: ${{ steps.identity.outputs.release_tag }}
+        run: |
+          $installer = '${{ steps.installer.outputs.installer }}'
+          $blockmap = Get-ChildItem -Path release -Filter '*.blockmap' -File | Select-Object -First 1
+          $assets = @($installer)
+          if ($null -ne $blockmap) { $assets += $blockmap.FullName }
+          gh release create $env:RELEASE_TAG @assets `
+            --repo $env:GH_REPO `
+            --target $env:SAHWA_EXPECTED_COMMIT `
+            --title "صهوة للخياطة $env:RELEASE_TAG (Unsigned, Acceptance Verified)" `
+            --notes "Unsigned Windows build. Packaged Acceptance passed on Windows runner. SmartScreen may show an Unknown Publisher warning." `
+            --prerelease
+
+      - name: Cleanup isolated install directory
+        if: always()
+        shell: pwsh
+        run: |
+          $installDir = Join-Path $env:RUNNER_TEMP 'SahwaTailoring-Automation'
+          if (Test-Path $installDir) { Remove-Item $installDir -Recurse -Force -ErrorAction SilentlyContinue }

@@ -1,0 +1,13 @@
+node_modules/
+dist/
+dist-electron/
+coverage/
+*.db
+*.db-*
+*.sqlite
+*.sqlite3
+*.bak
+*.backup
+*.log
+.DS_Store
+performance/v130-performance.*

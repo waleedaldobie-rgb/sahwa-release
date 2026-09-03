@@ -1,0 +1,346 @@
+name: Windows Packaged Acceptance
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      expected_commit:
+        description: "Optional exact commit SHA to test"
+        required: false
+        type: string
+
+permissions:
+  contents: read
+
+env:
+  NODE_VERSION: "22"
+  PYTHON_VERSION: "3.11"
+
+jobs:
+  windows-packaged-acceptance:
+    name: Build, install, and test Windows package
+    runs-on: windows-2022
+    timeout-minutes: 60
+    outputs:
+      commit: ${{ steps.identity.outputs.commit }}
+      short_sha: ${{ steps.identity.outputs.short_sha }}
+      version: ${{ steps.identity.outputs.version }}
+      cache_key: ${{ steps.identity.outputs.cache_key }}
+
+    steps:
+      - name: Checkout exact source commit
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ inputs.expected_commit || github.event.pull_request.head.sha || github.sha }}
+
+      - name: Resolve expected commit
+        id: identity
+        shell: pwsh
+        env:
+          REQUESTED_COMMIT: ${{ inputs.expected_commit }}
+        run: |
+          $commit = (git rev-parse HEAD).Trim()
+          if ($env:REQUESTED_COMMIT -and $commit -ne $env:REQUESTED_COMMIT) {
+            throw "Checked out commit '$commit' does not match requested '$env:REQUESTED_COMMIT'."
+          }
+          $short = $commit.Substring(0, 8)
+          $version = (Get-Content package.json -Raw | ConvertFrom-Json).version
+          $cacheKey = "sahwa-release-artifacts-$commit"
+          "SAHWA_EXPECTED_COMMIT=$commit" >> $env:GITHUB_ENV
+          "commit=$commit" >> $env:GITHUB_OUTPUT
+          "short_sha=$short" >> $env:GITHUB_OUTPUT
+          "version=$version" >> $env:GITHUB_OUTPUT
+          "cache_key=$cacheKey" >> $env:GITHUB_OUTPUT
+          Write-Host "Testing commit: $commit (version $version)"
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+
+      - name: Set up Python for native modules
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Set up MSVC build environment
+        uses: ilammy/msvc-dev-cmd@v1
+
+      - name: Install dependencies
+        shell: pwsh
+        env:
+          npm_config_python: ${{ env.pythonLocation }}\python.exe
+        run: |
+          npm ci --ignore-scripts
+          npm install --no-save --no-package-lock @rollup/rollup-win32-x64-msvc@4.62.4 @playwright/test
+
+      - name: Quality gate
+        run: npm run quality
+
+      - name: Unit tests
+        run: npm test -- --run --reporter=dot
+
+      - name: Build renderer
+        shell: pwsh
+        env:
+          GITHUB_PAGES: "false"
+          ELECTRON_BUILD: "true"
+        run: npm run build
+
+      - name: Build Electron files
+        run: npm run build:electron
+
+      - name: Run SQLite integration regression
+        shell: pwsh
+        run: npx electron --no-sandbox scripts/integration-regression.cjs
+
+      - name: Build unsigned Windows NSIS installer
+        shell: pwsh
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: "false"
+        run: npm run dist -- --publish never
+
+      - name: Verify installer and write SHA-256
+        id: installer
+        shell: pwsh
+        run: |
+          $installer = Get-ChildItem -Path release -Filter '*Setup*.exe' -File | Select-Object -First 1
+          if ($null -eq $installer) { throw 'No Windows Setup.exe was generated in release/.' }
+          $hash = (Get-FileHash -Algorithm SHA256 $installer.FullName).Hash
+          $shaFile = Join-Path $env:GITHUB_WORKSPACE 'release\SHA256SUMS.txt'
+          "file=$($installer.Name)" | Set-Content -Path $shaFile -Encoding utf8
+          "sha256=$hash" | Add-Content -Path $shaFile -Encoding utf8
+          "commit=$env:SAHWA_EXPECTED_COMMIT" | Add-Content -Path $shaFile -Encoding utf8
+          "installer=$($installer.FullName)" >> $env:GITHUB_OUTPUT
+          "sha256=$hash" >> $env:GITHUB_OUTPUT
+          Write-Host "Installer: $($installer.FullName)"
+          Write-Host "SHA-256: $hash"
+
+      - name: Install Setup.exe into isolated test directory
+        id: install
+        shell: pwsh
+        env:
+          INSTALL_DIR: ${{ runner.temp }}\SahwaTailoring-Automation
+          TEST_DATA_DIR: ${{ runner.temp }}\SahwaTailoring-Data
+          EVIDENCE_DIR: ${{ github.workspace }}\test-results\windows-packaged-acceptance
+        run: |
+          foreach ($path in @($env:INSTALL_DIR, $env:TEST_DATA_DIR, $env:EVIDENCE_DIR)) {
+            if (Test-Path $path) { Remove-Item $path -Recurse -Force }
+            New-Item -ItemType Directory -Force -Path $path | Out-Null
+          }
+          $process = Start-Process -FilePath '${{ steps.installer.outputs.installer }}' -ArgumentList @('/S', "/D=$env:INSTALL_DIR") -Wait -PassThru
+          if ($process.ExitCode -ne 0) { throw "Installer exited with code $($process.ExitCode)." }
+          $installedExe = Get-ChildItem -Path $env:INSTALL_DIR -Filter '*.exe' -Recurse -File |
+            Where-Object { $_.Name -notmatch 'uninstall|setup' } | Select-Object -First 1
+          if ($null -eq $installedExe) { throw 'Installed Electron executable was not found.' }
+          "SAHWA_EXE=$($installedExe.FullName)" >> $env:GITHUB_ENV
+          "SAHWA_TEST_DATA=$env:TEST_DATA_DIR" >> $env:GITHUB_ENV
+          "SAHWA_EVIDENCE_DIR=$env:EVIDENCE_DIR" >> $env:GITHUB_ENV
+          Write-Host "Installed executable: $($installedExe.FullName)"
+
+      - name: Run Windows Packaged Acceptance
+        shell: pwsh
+        run: |
+          node scripts/windows-acceptance-installed.mjs
+          if ($LASTEXITCODE -ne 0) { throw "Packaged Acceptance failed with exit code $LASTEXITCODE." }
+
+      - name: Validate acceptance evidence
+        shell: pwsh
+        run: |
+          $resultsPath = Join-Path $env:SAHWA_EVIDENCE_DIR 'acceptance-results.json'
+          if (-not (Test-Path $resultsPath)) { throw "Acceptance evidence not found: $resultsPath" }
+          $results = Get-Content -Raw $resultsPath | ConvertFrom-Json
+          if ($results.commit -ne $env:SAHWA_EXPECTED_COMMIT) {
+            throw "Evidence commit '$($results.commit)' does not match '$env:SAHWA_EXPECTED_COMMIT'."
+          }
+          $nonPass = @($results.results | Where-Object { $_.status -ne 'PASS' })
+          if ($nonPass.Count -gt 0) {
+            $ids = ($nonPass | ForEach-Object { $_.id }) -join ', '
+            throw "Acceptance contains non-PASS results: $ids"
+          }
+          if (@($results.runtimeErrors).Count -gt 0) { throw 'Acceptance reported runtime errors.' }
+          "WINDOWS_PACKAGED_ACCEPTANCE=PASS commit=$env:SAHWA_EXPECTED_COMMIT" >> $env:GITHUB_STEP_SUMMARY
+
+      - name: Cache release files for isolated upload job
+        if: success()
+        continue-on-error: true
+        uses: actions/cache/save@v4
+        with:
+          key: ${{ steps.identity.outputs.cache_key }}
+          path: |
+            release
+            test-results/windows-packaged-acceptance
+
+      - name: Cleanup isolated install directory
+        if: always()
+        shell: pwsh
+        run: |
+          $installDir = Join-Path $env:RUNNER_TEMP 'SahwaTailoring-Automation'
+          if (Test-Path $installDir) { Remove-Item $installDir -Recurse -Force -ErrorAction SilentlyContinue }
+
+      - name: Upload failure evidence
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: sahwa-failure-evidence-${{ github.run_id }}-${{ github.sha }}
+          retention-days: 30
+          if-no-files-found: warn
+          path: |
+            test-results/windows-packaged-acceptance/**
+            release/**
+
+  upload-release-artifacts:
+    name: Upload release artifacts with retry
+    needs: windows-packaged-acceptance
+    if: always() && needs.windows-packaged-acceptance.result == 'success'
+    runs-on: windows-2022
+    continue-on-error: true
+    timeout-minutes: 10
+
+    steps:
+      - name: Restore cached acceptance files
+        id: cache-restore
+        uses: actions/cache/restore@v4
+        with:
+          key: ${{ needs.windows-packaged-acceptance.outputs.cache_key }}
+          path: |
+            release
+            test-results/windows-packaged-acceptance
+
+      - name: Release gate - verify installer, checksum, acceptance, screenshots, CSV, and Excel
+        id: release-gate
+        shell: pwsh
+        run: |
+          $required = @(
+            (Get-ChildItem release -Filter '*Setup*.exe' -File -ErrorAction SilentlyContinue),
+            (Get-Item release\SHA256SUMS.txt -ErrorAction SilentlyContinue),
+            (Get-Item test-results\windows-packaged-acceptance\acceptance-results.json -ErrorAction SilentlyContinue),
+            (Get-ChildItem test-results\windows-packaged-acceptance -Filter '*.png' -File -ErrorAction SilentlyContinue),
+            (Get-ChildItem test-results\windows-packaged-acceptance -Filter '*.csv' -File -ErrorAction SilentlyContinue),
+            (Get-ChildItem test-results\windows-packaged-acceptance -Filter '*.xlsx' -File -ErrorAction SilentlyContinue)
+          )
+          if ($required | Where-Object { $null -eq $_ -or ($_.Count -eq 0) }) {
+            throw 'Release gate failed: installer, SHA256SUMS.txt, acceptance-results.json, screenshots, CSV, and Excel evidence are all required.'
+          }
+          Write-Host 'Release gate passed.'
+
+      - name: Upload artifact attempt 1
+        id: upload-1
+        if: steps.release-gate.outcome == 'success' && steps.cache-restore.outputs.cache-hit == 'true'
+        continue-on-error: true
+        uses: actions/upload-artifact@v4
+        with:
+          name: sahwa-release-artifacts-${{ needs.windows-packaged-acceptance.outputs.version }}-${{ needs.windows-packaged-acceptance.outputs.short_sha }}
+          if-no-files-found: error
+          retention-days: 90
+          path: |
+            release/*Setup*.exe
+            release/SHA256SUMS.txt
+            test-results/windows-packaged-acceptance/**
+
+      - name: Wait 30 seconds before upload retry 2
+        if: steps.upload-1.outcome == 'failure'
+        shell: pwsh
+        run: Start-Sleep -Seconds 30
+
+      - name: Upload artifact attempt 2
+        id: upload-2
+        if: steps.release-gate.outcome == 'success' && steps.upload-1.outcome == 'failure'
+        continue-on-error: true
+        uses: actions/upload-artifact@v4
+        with:
+          name: sahwa-release-artifacts-${{ needs.windows-packaged-acceptance.outputs.version }}-${{ needs.windows-packaged-acceptance.outputs.short_sha }}
+          if-no-files-found: error
+          retention-days: 90
+          path: |
+            release/*Setup*.exe
+            release/SHA256SUMS.txt
+            test-results/windows-packaged-acceptance/**
+
+      - name: Wait 30 seconds before upload retry 3
+        if: steps.upload-2.outcome == 'failure'
+        shell: pwsh
+        run: Start-Sleep -Seconds 30
+
+      - name: Upload artifact attempt 3
+        id: upload-3
+        if: steps.release-gate.outcome == 'success' && steps.upload-2.outcome == 'failure'
+        continue-on-error: true
+        uses: actions/upload-artifact@v4
+        with:
+          name: sahwa-release-artifacts-${{ needs.windows-packaged-acceptance.outputs.version }}-${{ needs.windows-packaged-acceptance.outputs.short_sha }}
+          if-no-files-found: error
+          retention-days: 90
+          path: |
+            release/*Setup*.exe
+            release/SHA256SUMS.txt
+            test-results/windows-packaged-acceptance/**
+
+      - name: Upload summary
+        if: always()
+        shell: pwsh
+        run: |
+          if ($env:GITHUB_STEP_SUMMARY) {
+            "Acceptance remained successful; artifact upload was isolated with three network retry attempts." >> $env:GITHUB_STEP_SUMMARY
+          }
+
+  notify-on-failure:
+    name: Notify Slack or Teams on failure
+    needs:
+      - windows-packaged-acceptance
+      - upload-release-artifacts
+    if: ${{ always() && (needs.windows-packaged-acceptance.result == 'failure' || needs.upload-release-artifacts.result == 'failure') }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+      SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+      TEAMS_WEBHOOK_URL: ${{ secrets.TEAMS_WEBHOOK_URL }}
+
+    steps:
+      - name: Notify Slack
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -z "${SLACK_WEBHOOK_URL:-}" ]; then
+            echo "Slack notification skipped: SLACK_WEBHOOK_URL is not configured."
+            exit 0
+          fi
+          payload=$(python3 - <<'PY'
+          import json, os
+          print(json.dumps({
+              "text": f":x: Sahwa Windows Acceptance failed. <{os.environ['RUN_URL']}|Open workflow>"
+          }))
+          PY
+          )
+          curl --fail-with-body --silent --show-error \
+            -X POST \
+            -H 'Content-Type: application/json' \
+            --data "$payload" \
+            "$SLACK_WEBHOOK_URL"
+
+      - name: Notify Microsoft Teams
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -z "${TEAMS_WEBHOOK_URL:-}" ]; then
+            echo "Teams notification skipped: TEAMS_WEBHOOK_URL is not configured."
+            exit 0
+          fi
+          payload=$(python3 - <<'PY'
+          import json, os
+          print(json.dumps({
+              "text": f"Sahwa Windows Acceptance failed.\\n\\n[Open workflow]({os.environ['RUN_URL']})"
+          }))
+          PY
+          )
+          curl --fail-with-body --silent --show-error \
+            -X POST \
+            -H 'Content-Type: application/json' \
+            --data "$payload" \
+            "$TEAMS_WEBHOOK_URL"

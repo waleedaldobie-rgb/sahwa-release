@@ -1,0 +1,61 @@
+name: Build Windows Installer
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build-windows-installer:
+    name: Build Setup.exe on Windows
+    runs-on: windows-2022
+
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Set up Python for native modules
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        env:
+          npm_config_python: ${{ env.pythonLocation }}\\python.exe
+        run: |
+          npm ci
+          npm install --no-save --no-package-lock @rollup/rollup-win32-x64-msvc@4.62.4
+
+      - name: Verify TypeScript and automated tests
+        run: |
+          npm run lint
+          npm test
+
+      - name: Build Windows installer
+        run: npm run dist -- --publish never
+
+      - name: Publish installer checksum in workflow summary
+        shell: pwsh
+        run: |
+          $installer = Get-ChildItem -Path release -Filter '*Setup*.exe' | Select-Object -First 1
+          if (-not $installer) { throw 'Setup.exe was not created in the release folder.' }
+          $hash = (Get-FileHash -Algorithm SHA256 $installer.FullName).Hash
+          "## Sahwa Tailoring Windows Installer" >> $env:GITHUB_STEP_SUMMARY
+          "" >> $env:GITHUB_STEP_SUMMARY
+          "- File: ``$($installer.Name)``" >> $env:GITHUB_STEP_SUMMARY
+          "- SHA-256: ``$hash``" >> $env:GITHUB_STEP_SUMMARY
+
+      - name: Upload Setup.exe artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Sahwa-Tailoring-Windows-Setup
+          path: release/*Setup*.exe
+          if-no-files-found: error
+          retention-days: 30

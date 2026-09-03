@@ -1,0 +1,100 @@
+name: Desktop Visual Viewport Check
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'src/**'
+      - 'scripts/desktop-visual-viewport-check.mjs'
+      - 'package.json'
+      - '.github/workflows/desktop-visual-viewport.yml'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'src/**'
+      - 'scripts/desktop-visual-viewport-check.mjs'
+      - 'package.json'
+      - '.github/workflows/desktop-visual-viewport.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  desktop-visual-viewport:
+    name: Electron desktop viewport screenshots
+    runs-on: windows-2022
+    timeout-minutes: 25
+
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Set up Python for native modules
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        shell: pwsh
+        env:
+          npm_config_python: ${{ env.pythonLocation }}\python.exe
+        run: |
+          npm ci
+          npm install --no-save --no-package-lock @rollup/rollup-win32-x64-msvc@4.62.4 @playwright/test
+          npx electron --version
+          if (-not (Test-Path (Join-Path $env:GITHUB_WORKSPACE 'node_modules\electron\dist\electron.exe'))) {
+            throw 'Electron binary was not downloaded.'
+          }
+
+      - name: Build renderer and Electron files
+        shell: pwsh
+        env:
+          GITHUB_PAGES: 'false'
+          ELECTRON_BUILD: 'true'
+        run: |
+          npm run build
+          if ($LASTEXITCODE -ne 0) { throw 'Renderer build failed.' }
+          npm run build:electron
+          if ($LASTEXITCODE -ne 0) { throw 'Electron build failed.' }
+
+      - name: Run desktop viewport visual check
+        shell: pwsh
+        env:
+          CDP_PORT: '9333'
+          DESKTOP_VISUAL_OUTPUT_DIR: ${{ github.workspace }}\test-results\desktop-visual-viewport
+        run: |
+          New-Item -ItemType Directory -Force -Path $env:DESKTOP_VISUAL_OUTPUT_DIR | Out-Null
+          $electronPath = Join-Path $env:GITHUB_WORKSPACE 'node_modules\electron\dist\electron.exe'
+          $app = Start-Process -FilePath $electronPath `
+            -ArgumentList @('--no-sandbox', '--remote-debugging-port=9333', '.') `
+            -WorkingDirectory $env:GITHUB_WORKSPACE `
+            -PassThru
+          try {
+            npm run test:visual:desktop
+            if ($LASTEXITCODE -ne 0) { throw "Desktop visual check failed with exit code $LASTEXITCODE." }
+          }
+          finally {
+            if ($app -and -not $app.HasExited) {
+              Stop-Process -Id $app.Id -Force -ErrorAction SilentlyContinue
+            }
+            Get-Process -Name electron -ErrorAction SilentlyContinue |
+              Stop-Process -Force -ErrorAction SilentlyContinue
+          }
+
+      - name: Upload desktop visual evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: sahwa-desktop-visual-${{ github.run_number }}
+          path: test-results/desktop-visual-viewport/
+          if-no-files-found: warn
+          retention-days: 30

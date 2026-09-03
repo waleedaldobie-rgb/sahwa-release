@@ -1,0 +1,54 @@
+{
+  "$schema": "https://electron.build/configuration.json",
+  "appId": "com.sahwa.tailoring",
+  "productName": "صهوة للخياطة",
+  "executableName": "sahwa-tailoring",
+  "artifactName": "Sahwa-Tailoring-Setup-${version}.${ext}",
+  "directories": {
+    "output": "release",
+    "buildResources": "build"
+  },
+  "files": [
+    "dist/**/*",
+    "dist-electron/**/*",
+    "package.json",
+    "build/icon.ico",
+    "!dist/**/*.map",
+    "!dist-electron/**/*.map",
+    "!src/**/*",
+    "!data/**/*",
+    "!test-results/**/*",
+    "!performance/**/*"
+  ],
+  "asar": true,
+  "asarUnpack": [
+    "node_modules/better-sqlite3/**/*"
+  ],
+  "npmRebuild": true,
+  "win": {
+    "icon": "build/icon.ico",
+    "target": [
+      {
+        "target": "nsis",
+        "arch": [
+          "x64"
+        ]
+      }
+    ],
+    "signAndEditExecutable": false
+  },
+  "nsis": {
+    "oneClick": false,
+    "perMachine": false,
+    "allowElevation": true,
+    "allowToChangeInstallationDirectory": true,
+    "createDesktopShortcut": true,
+    "createStartMenuShortcut": true,
+    "shortcutName": "صهوة للخياطة",
+    "include": "build/installer.nsh",
+    "installerIcon": "build/icon.ico",
+    "uninstallerIcon": "build/icon.ico",
+    "deleteAppDataOnUninstall": false,
+    "runAfterFinish": true
+  }
+}

@@ -1,0 +1,137 @@
+name: Inventory Playwright UI
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "src/components/InventoryView.tsx"
+      - "scripts/playwright-sahwa-packaged.e2e.ts"
+      - "playwright.config.ts"
+      - ".github/workflows/playwright-inventory.yml"
+      - "package.json"
+      - "package-lock.json"
+  pull_request:
+    branches: [main]
+    paths:
+      - "src/components/InventoryView.tsx"
+      - "scripts/playwright-sahwa-packaged.e2e.ts"
+      - "playwright.config.ts"
+      - ".github/workflows/playwright-inventory.yml"
+      - "package.json"
+      - "package-lock.json"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: inventory-playwright-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  inventory-ui:
+    name: Build, install, and test inventory UI
+    runs-on: windows-2022
+    timeout-minutes: 60
+    env:
+      CI: true
+      NODE_VERSION: "22"
+      PYTHON_VERSION: "3.11"
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+
+      - name: Set up Python for native modules
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Set up MSVC build environment
+        uses: ilammy/msvc-dev-cmd@v1
+
+      - name: Install dependencies
+        shell: pwsh
+        env:
+          npm_config_python: ${{ env.pythonLocation }}\\python.exe
+        run: |
+          npm ci --ignore-scripts
+          npm install --no-save --no-package-lock @rollup/rollup-win32-x64-msvc@4.62.4
+          npx playwright install chromium
+
+      - name: Build unsigned Windows installer
+        shell: pwsh
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: "false"
+        run: npm run dist -- --publish never
+
+      - name: Install package into isolated test directory
+        shell: pwsh
+        env:
+          INSTALL_DIR: ${{ runner.temp }}\\Sahwa-Playwright-Install
+          TEST_DATA_DIR: ${{ runner.temp }}\\Sahwa-Playwright-Data
+          EVIDENCE_DIR: ${{ github.workspace }}\\test-results\\playwright-inventory
+        run: |
+          if (Test-Path $env:INSTALL_DIR) {
+            Remove-Item $env:INSTALL_DIR -Recurse -Force
+          }
+          New-Item -ItemType Directory -Force -Path $env:INSTALL_DIR | Out-Null
+          New-Item -ItemType Directory -Force -Path $env:TEST_DATA_DIR | Out-Null
+          New-Item -ItemType Directory -Force -Path $env:EVIDENCE_DIR | Out-Null
+
+          $installer = Get-ChildItem -Path release -Filter '*Setup*.exe' -File | Select-Object -First 1
+          if ($null -eq $installer) {
+            throw 'Windows Setup.exe was not generated in release/.'
+          }
+
+          $process = Start-Process -FilePath $installer.FullName -ArgumentList @('/S', "/D=$env:INSTALL_DIR") -Wait -PassThru
+          if ($process.ExitCode -ne 0) {
+            throw "Installer exited with code $($process.ExitCode)."
+          }
+
+          $installedExe = Get-ChildItem -Path $env:INSTALL_DIR -Filter '*.exe' -Recurse -File |
+            Where-Object { $_.Name -notmatch 'uninstall|setup' } |
+            Select-Object -First 1
+          if ($null -eq $installedExe) {
+            throw 'Installed Electron executable was not found.'
+          }
+
+          "SAHWA_EXE=$($installedExe.FullName)" >> $env:GITHUB_ENV
+          "SAHWA_TEST_DATA=$env:TEST_DATA_DIR" >> $env:GITHUB_ENV
+          "SAHWA_EVIDENCE_DIR=$env:EVIDENCE_DIR" >> $env:GITHUB_ENV
+          Write-Host "Installed executable: $($installedExe.FullName)"
+
+      - name: Run inventory Playwright tests
+        shell: pwsh
+        run: |
+          npx playwright test scripts/playwright-sahwa-packaged.e2e.ts `
+            --config=playwright.config.ts `
+            --workers=1
+
+      - name: Upload Playwright evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: inventory-playwright-evidence-${{ github.run_id }}-${{ github.sha }}
+          retention-days: 30
+          if-no-files-found: warn
+          path: |
+            test-results/playwright-inventory/**
+            test-results/**
+            playwright-report/**
+            release/*Setup*.exe
+            release/SHA256SUMS.txt
+
+      - name: Cleanup isolated test directory
+        if: always()
+        shell: pwsh
+        run: |
+          if ($env:INSTALL_DIR -and (Test-Path $env:INSTALL_DIR)) {
+            Remove-Item $env:INSTALL_DIR -Recurse -Force -ErrorAction SilentlyContinue
+          }
