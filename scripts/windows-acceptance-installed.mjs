@@ -439,7 +439,14 @@ async function createCustomerAndOrder(pageRef, fabric) {
   await pageRef.getByTestId('order-measurement-shoulderWidth').fill('18');
   await pageRef.getByTestId('order-measurement-sleeveLength').fill('24');
   await pageRef.getByTestId('order-save').click();
-  await expect(pageRef.getByRole('row', { name: /عميل Windows Acceptance/ })).toBeVisible({ timeout: 20_000 });
+  await expect(pageRef.getByRole('dialog')).toBeHidden({ timeout: 20_000 });
+  await expect.poll(async () => {
+    const snapshot = await getDataSnapshot(pageRef);
+    return snapshot.orders.some((item) => item.customerName === 'عميل Windows Acceptance');
+  }, { timeout: 20_000 }).toBe(true);
+  await openTab(pageRef, 'إدارة الطلبات', 'إدارة طلبات الخياطة');
+  const orderRow = pageRef.locator('tbody tr').filter({ hasText: 'عميل Windows Acceptance' });
+  await expect(orderRow).toBeVisible({ timeout: 20_000 });
   const data = await getDataSnapshot(pageRef);
   const order = data.orders.find((item) => item.customerName === 'عميل Windows Acceptance');
   assert(order, 'The acceptance order was not persisted.');
