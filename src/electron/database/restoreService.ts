@@ -88,8 +88,8 @@ function applyRestorePayload(db: Database.Database, parsed: RestorePayload): voi
   for (const f of parsed.fabrics) {
     fabStmt.run(
       f.id, f.name, f.color, f.colorHex || '#ffffff',
-      f.purchasePrice || 0, f.sellingPrice || 0, f.quantityMeters || 0,
-      f.minStockMeters || 10, f.createdAt || new Date().toISOString()
+      f.purchasePrice ?? 0, f.sellingPrice ?? 0, f.quantityMeters ?? 0,
+      f.minStockMeters ?? 10, f.createdAt || new Date().toISOString()
     );
   }
 
@@ -98,7 +98,7 @@ function applyRestorePayload(db: Database.Database, parsed: RestorePayload): voi
     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
   `);
   for (const a of parsed.accessories) {
-    accStmt.run(a.id, a.name, a.category, a.quantity || 0, a.minStock || 5, a.unit || 'حبة', a.purchasePrice || 0, a.sellingPrice || 0, a.createdAt || new Date().toISOString());
+    accStmt.run(a.id, a.name, a.category, a.quantity ?? 0, a.minStock ?? 5, a.unit || 'حبة', a.purchasePrice ?? 0, a.sellingPrice ?? 0, a.createdAt || new Date().toISOString());
   }
 
   const thbStmt = db.prepare(`
@@ -106,7 +106,7 @@ function applyRestorePayload(db: Database.Database, parsed: RestorePayload): voi
     VALUES (?, ?, ?, ?)
   `);
   for (const t of parsed.thobeTypes) {
-    thbStmt.run(t.id, t.name, t.defaultPrice || 0, t.description || '');
+    thbStmt.run(t.id, t.name, t.defaultPrice ?? 0, t.description || '');
   }
 
   const colStmt = db.prepare(`
@@ -129,8 +129,8 @@ function applyRestorePayload(db: Database.Database, parsed: RestorePayload): voi
   `);
 
   for (const o of parsed.orders) {
-    const total = o.totalAmount || 0;
-    const paid = o.paidAmount || 0;
+    const total = o.totalAmount ?? 0;
+    const paid = o.paidAmount ?? 0;
     const remaining = o.remainingAmount ?? Math.max(0, total - paid);
     const cashReceived = o.cashReceived ?? paid;
     const overpaymentAmount = o.overpaymentAmount ?? 0;
@@ -140,8 +140,8 @@ function applyRestorePayload(db: Database.Database, parsed: RestorePayload): voi
       o.id, o.orderNumber, o.customerId, o.customerName, o.customerPhone,
       o.thobeTypeId || null, o.thobeTypeName || 'ثوب', o.fabricId || null,
       o.fabricName || 'قماش', o.fabricColor || 'أبيض',
-      o.fabricConsumptionMeters || 3.5, o.fabricBuyPriceAtOrder || 0,
-      o.garmentCount || 1, o.orderDate, o.deliveryDate, o.status || 'new',
+      o.fabricConsumptionMeters ?? 3.5, o.fabricBuyPriceAtOrder ?? 0,
+      o.garmentCount ?? 1, o.orderDate, o.deliveryDate, o.status || 'new',
       total, paid, remaining, cashReceived, overpaymentAmount, cancellationWriteoffAmount,
       o.isCustomMeasurement ? 1 : 0,
       JSON.stringify(normalizeMeasurements(o.measurements)), JSON.stringify(normalizeStyleDetails(o.styleDetails)),
@@ -159,12 +159,12 @@ function applyRestorePayload(db: Database.Database, parsed: RestorePayload): voi
       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
     for (const inv of parsed.invoices) {
-      const remaining = inv.remainingAmount ?? Math.max(0, (inv.totalAmount || 0) - (inv.paidAmount || 0) - (inv.cancellationWriteoffAmount || 0));
+      const remaining = inv.remainingAmount ?? Math.max(0, (inv.totalAmount ?? 0) - (inv.paidAmount ?? 0) - (inv.cancellationWriteoffAmount ?? 0));
       invStmt.run(
         inv.id, inv.invoiceNumber, inv.visibleInvoiceNumber ?? null, inv.orderId, inv.customerName, inv.customerPhone,
-        inv.orderDate, inv.totalAmount || 0, inv.paidAmount || 0, remaining,
-        inv.cashReceived ?? inv.paidAmount ?? 0, inv.overpaymentAmount || 0,
-        inv.cancellationWriteoffAmount || 0, inv.paymentStatus || 'unpaid', JSON.stringify(inv.payments || [])
+        inv.orderDate, inv.totalAmount ?? 0, inv.paidAmount ?? 0, remaining,
+        inv.cashReceived ?? inv.paidAmount ?? 0, inv.overpaymentAmount ?? 0,
+        inv.cancellationWriteoffAmount ?? 0, inv.paymentStatus || 'unpaid', JSON.stringify(inv.payments || [])
       );
     }
   }
@@ -226,14 +226,14 @@ function applyRestorePayload(db: Database.Database, parsed: RestorePayload): voi
     `);
     for (const purchase of parsed.purchases) {
       purchaseStmt.run(
-        purchase.id, purchase.supplier, purchase.invoiceNumber || null, purchase.purchaseDate, purchase.totalAmount || 0,
+        purchase.id, purchase.supplier, purchase.invoiceNumber || null, purchase.purchaseDate, purchase.totalAmount ?? 0,
         purchase.paymentMethod || 'cash', purchase.notes || null, purchase.status || 'approved', purchase.createdAt || new Date().toISOString()
       );
       const lines = Array.isArray(purchase.lines) ? purchase.lines as Array<Record<string, unknown>> : [];
       for (const line of lines) {
         lineStmt.run(
           line.id, purchase.id, line.itemType, line.itemId, line.itemName, line.quantity, line.unit,
-          line.unitPrice || 0, line.totalAmount || 0, line.createdAt || new Date().toISOString()
+          line.unitPrice ?? 0, line.totalAmount ?? 0, line.createdAt || new Date().toISOString()
         );
       }
     }
@@ -246,7 +246,7 @@ function applyRestorePayload(db: Database.Database, parsed: RestorePayload): voi
     `);
     for (const expense of parsed.expenses) {
       expenseStmt.run(
-        expense.id, expense.category, expense.amount || 0, expense.expenseDate, expense.paymentMethod || 'cash',
+        expense.id, expense.category, expense.amount ?? 0, expense.expenseDate, expense.paymentMethod || 'cash',
         expense.description, expense.notes || null, expense.createdAt || new Date().toISOString()
       );
     }
@@ -260,7 +260,7 @@ function applyRestorePayload(db: Database.Database, parsed: RestorePayload): voi
     for (const cash of parsed.cashTransactions) {
       cashStmt.run(
         cash.id, cash.direction, cash.sourceType, cash.sourceId || null, cash.orderId || null, cash.referenceNumber || null,
-        cash.amount || 0, cash.paymentMethod || 'cash', cash.transactionDate, cash.description, cash.notes || null,
+        cash.amount ?? 0, cash.paymentMethod || 'cash', cash.transactionDate, cash.description, cash.notes || null,
         cash.actorId || null, cash.reason || null, cash.createdAt || new Date().toISOString()
       );
     }
@@ -287,7 +287,7 @@ function applyRestorePayload(db: Database.Database, parsed: RestorePayload): voi
     for (const usage of parsed.orderMaterialUsages) {
       materialStmt.run(
         usage.id, usage.orderId, usage.itemType, usage.itemId || null, usage.itemName, usage.quantity, usage.unit,
-        usage.unitCostAtUsage || 0, usage.totalCost || 0, usage.sourceMovementId || null, usage.createdAt || new Date().toISOString()
+        usage.unitCostAtUsage ?? 0, usage.totalCost ?? 0, usage.sourceMovementId || null, usage.createdAt || new Date().toISOString()
       );
     }
   }
@@ -306,7 +306,7 @@ function applyRestorePayload(db: Database.Database, parsed: RestorePayload): voi
         notification.customerPhone || null, notification.orderId || null,
         notification.status || 'sent', notification.source || 'legacy', notification.sourceId || notification.id,
         notification.readAt || null, notification.archivedAt || null,
-        notification.retryCount || 0, notification.lastError || null, JSON.stringify(notification.retryHistory || []),
+        notification.retryCount ?? 0, notification.lastError || null, JSON.stringify(notification.retryHistory || []),
         notification.createdAt || new Date().toISOString(), notification.updatedAt || new Date().toISOString()
       );
     }

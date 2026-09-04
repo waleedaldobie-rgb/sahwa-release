@@ -1,5 +1,5 @@
-import React, { Suspense, useCallback, useEffect, useMemo, useState } from 'react';
-import { Loader2 } from 'lucide-react';
+import React, { Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { FolderOpen, Loader2, RotateCcw, Upload } from 'lucide-react';
 import { UserPreferences, Customer, Order, MeasurementHistoryRecord } from './types';
 import { VALIDATION_SCHEMAS, validateEntity, validateEntityErrors } from './domain/validation';
 import { useToastContext } from './application/ToastProvider';
@@ -18,7 +18,7 @@ export { VALIDATION_SCHEMAS, validateEntity, validateEntityErrors };
 
 import { Sidebar } from './components/Sidebar';
 import { Header } from './components/Header';
-import { Toast, LoadingSpinner } from './components/ui';
+import { Button, Toast, LoadingSpinner } from './components/ui';
 import { ornamentPatternSoft } from './components/Ornaments';
 import { BackupModal } from './components/BackupModal';
 import { NotificationsModal } from './components/NotificationsModal';
@@ -38,6 +38,9 @@ export default function App() {
   const { prefs, setPrefs } = usePreferencesContext();
   const { toast, showToast, executeCrud, crudProgress, undoTimerRef, handleCloseToast } = useToastContext();
   const [isLoading, setIsLoading] = useState(true);
+  const [bootstrapError, setBootstrapError] = useState<string | null>(null);
+  const [isRestoringBackup, setIsRestoringBackup] = useState(false);
+  const backupFileInputRef = useRef<HTMLInputElement>(null);
   const [isDashboardRefreshing, setIsDashboardRefreshing] = useState(false);
   const [isBackupModalOpen, setIsBackupModalOpen] = useState(false);
   const [isNotificationsModalOpen, setIsNotificationsModalOpen] = useState(false);
@@ -52,6 +55,7 @@ export default function App() {
     setIsLoading,
     setDataRevision,
     setLastUpdatedAt,
+    setBootstrapError,
     gateway,
   });
   const { offerDeleteUndo } = useBackupController(loadAppData, showToast, gateway);
@@ -165,6 +169,85 @@ export default function App() {
       default: return { title: 'صهوة للخياطة', description: 'نظام إدارة الخياطة الرجالية' };
     }
   }, [prefs.activeTab]);
+
+  const handleRetryBootstrap = useCallback(() => {
+    void loadAppData();
+  }, [loadAppData]);
+
+  const handleOpenBackupFolder = useCallback(async () => {
+    try {
+      const info = await window.electronAPI.automationStorageInfo?.();
+      if (info?.backupDir) {
+        try {
+          await navigator.clipboard.writeText(info.backupDir);
+        } catch {
+          /* clipboard may be unavailable */
+        }
+        window.alert(`مجلد النسخ الاحتياطية:\n${info.backupDir}`);
+        return;
+      }
+    } catch {
+      /* automationStorageInfo is unavailable outside packaged automation */
+    }
+    backupFileInputRef.current?.click();
+  }, []);
+
+  const handleRestoreBackupFile = useCallback(async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    event.target.value = '';
+    if (!file) return;
+    setIsRestoringBackup(true);
+    try {
+      const content = await file.text();
+      const result = await gateway.restoreFromJson(content) as { success?: boolean; error?: string };
+      if (result && result.success === false) {
+        setBootstrapError(result.error || 'تعذر استعادة النسخة الاحتياطية');
+        return;
+      }
+      await loadAppData();
+    } catch (error) {
+      setBootstrapError(error instanceof Error ? error.message : 'تعذر استعادة النسخة الاحتياطية');
+    } finally {
+      setIsRestoringBackup(false);
+    }
+  }, [gateway, loadAppData]);
+
+  if (bootstrapError && !isLoading) {
+    return (
+      <div dir="rtl" className="h-screen bg-[var(--ui-charcoal)] flex items-center justify-center p-6">
+        <div role="alert" className="w-full max-w-lg rounded-2xl border border-rose-200 bg-[var(--ui-ivory)] p-8 text-center shadow-xl">
+          <h1 className="text-xl font-black text-rose-900">تعذر تحميل نظام صهوة</h1>
+          <p className="mt-3 text-sm font-bold leading-7 text-slate-700">
+            حدث خطأ أثناء قراءة البيانات. يمكنك إعادة المحاولة، فتح مجلد النسخ الاحتياطية، أو استعادة نسخة احتياطية.
+          </p>
+          <p className="mt-3 text-xs font-bold text-rose-800">{bootstrapError}</p>
+          <input
+            ref={backupFileInputRef}
+            type="file"
+            accept=".json,application/json"
+            className="hidden"
+            onChange={handleRestoreBackupFile}
+          />
+          <div className="mt-6 flex flex-col gap-3">
+            <Button variant="primary" icon={<RotateCcw className="w-4 h-4" />} onClick={handleRetryBootstrap}>
+              إعادة المحاولة
+            </Button>
+            <Button variant="secondary" icon={<FolderOpen className="w-4 h-4" />} onClick={() => void handleOpenBackupFolder()}>
+              فتح مجلد النسخ الاحتياطية
+            </Button>
+            <Button
+              variant="outline-dark"
+              icon={<Upload className="w-4 h-4" />}
+              isLoading={isRestoringBackup}
+              onClick={() => backupFileInputRef.current?.click()}
+            >
+              استعادة نسخة احتياطية
+            </Button>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   if (isLoading || !data) {
     return (

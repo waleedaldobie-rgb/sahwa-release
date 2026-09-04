@@ -2,6 +2,7 @@ import { Dispatch, SetStateAction, useCallback, useRef } from 'react';
 import { AppData, UserPreferences } from '../types';
 import { initElectronMock } from '../services/electronMock';
 import { checkAndSyncStockAlerts } from '../utils/stockAlerts';
+import { formatIpcErrorMessage } from '../utils/ipcError';
 import { ALL_DATA_SLICES, DataRevision, DataSliceName, bumpDataRevision, mergeDataSlices } from '../state/appDataStore';
 import { loadDataSlices, SliceApi } from './dataSlices';
 import { SahwaGateway } from './gateway';
@@ -39,6 +40,7 @@ export interface UseAppBootstrapArgs {
   setIsLoading: Dispatch<SetStateAction<boolean>>;
   setDataRevision: Dispatch<SetStateAction<DataRevision>>;
   setLastUpdatedAt: Dispatch<SetStateAction<number | null>>;
+  setBootstrapError: Dispatch<SetStateAction<string | null>>;
   gateway: SahwaGateway;
 }
 
@@ -49,6 +51,7 @@ export function useAppBootstrap({
   setIsLoading,
   setDataRevision,
   setLastUpdatedAt,
+  setBootstrapError,
   gateway,
 }: UseAppBootstrapArgs) {
   const loadInFlightRef = useRef<Promise<string[]> | null>(null);
@@ -60,23 +63,30 @@ export function useAppBootstrap({
 
     const request = (async () => {
       setIsLoading(true);
-      initElectronMock();
-      const [appData, appPrefs] = await Promise.all([
-        gateway.getData() as Promise<AppData>,
-        window.electronAPI.getPreferences(),
-      ]);
+      setBootstrapError(null);
+      try {
+        initElectronMock();
+        const [appData, appPrefs] = await Promise.all([
+          gateway.getData() as Promise<AppData>,
+          window.electronAPI.getPreferences(),
+        ]);
 
-      const { updatedData, alertMessages } = checkAndSyncStockAlerts(appData);
-      if (updatedData !== appData) {
-        await gateway.saveData(updatedData);
+        const { updatedData, alertMessages } = checkAndSyncStockAlerts(appData);
+        if (updatedData !== appData) {
+          await gateway.saveData(updatedData);
+        }
+
+        setData(updatedData);
+        setDataRevision((current) => bumpDataRevision(current, ALL_DATA_SLICES));
+        setLastUpdatedAt(Date.now());
+        setPrefs(appPrefs);
+        setIsLoading(false);
+        return alertMessages;
+      } catch (error) {
+        setIsLoading(false);
+        setBootstrapError(formatIpcErrorMessage(error));
+        return [];
       }
-
-      setData(updatedData);
-      setDataRevision((current) => bumpDataRevision(current, ALL_DATA_SLICES));
-      setLastUpdatedAt(Date.now());
-      setPrefs(appPrefs);
-      setIsLoading(false);
-      return alertMessages;
     })();
 
     loadInFlightRef.current = request;
@@ -85,7 +95,7 @@ export function useAppBootstrap({
     } finally {
       if (loadInFlightRef.current === request) loadInFlightRef.current = null;
     }
-  }, [gateway, setData, setDataRevision, setIsLoading, setLastUpdatedAt, setPrefs]);
+  }, [gateway, setData, setDataRevision, setIsLoading, setLastUpdatedAt, setPrefs, setBootstrapError]);
 
   const persistData = useCallback(async (updatedData: AppData): Promise<string[]> => {
     const { updatedData: syncedData, alertMessages } = checkAndSyncStockAlerts(updatedData);
