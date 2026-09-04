@@ -93,7 +93,7 @@ export const AccountingView: React.FC<AccountingViewProps> = ({
     }
     const operationId = purchaseOperationIdRef.current || createSafeId('PUR');
     purchaseOperationIdRef.current = operationId;
-    const saved = await onCreatePurchase({ id: operationId, supplier, invoiceNumber, purchaseDate, paymentMethod: purchaseMethod, notes: purchaseNotes, lines: purchaseLines });
+    const saved = await onCreatePurchase({ id: operationId, supplier, invoiceNumber, purchaseDate, totalAmount: purchaseTotal, paymentMethod: purchaseMethod, notes: purchaseNotes, lines: purchaseLines });
     if (saved === false) return;
     purchaseOperationIdRef.current = null;
     setSupplier(''); setInvoiceNumber(''); setPurchaseNotes(''); setPurchaseLines([]); setPurchaseDate(today());
