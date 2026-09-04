@@ -402,7 +402,7 @@ export const Toast: React.FC<{ toast: ToastState; onClose: () => void }> = ({
   };
 
   return (
-    <div className="fixed top-8 left-1/2 -translate-x-1/2 z-[100] no-print animate-in slide-in-from-top duration-300 w-[calc(100vw-2rem)] max-w-lg">
+    <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-[100] no-print animate-in slide-in-from-bottom duration-300 w-[calc(100vw-2rem)] max-w-lg">
       <div
         role={toast.type === 'danger' ? 'alert' : 'status'}
         aria-live={toast.type === 'danger' ? 'assertive' : 'polite'}

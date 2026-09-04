@@ -21,6 +21,7 @@ export interface SidebarProps {
   onTabChange: (tab: string) => void;
   onOpenBackupModal: () => void;
   unreadNotifCount: number;
+  overdueOrdersCount?: number;
   managerName?: string;
 }
 
@@ -39,7 +40,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
   activeTab,
   onTabChange,
   onOpenBackupModal,
-  managerName = 'حاتم محمد الدبعي'
+  managerName = 'حاتم محمد الدبعي',
+  overdueOrdersCount = 0
 }) => {
   return (
     <aside className="w-68 bg-[var(--ui-charcoal)] border-l border-white/5 flex flex-col justify-between shrink-0 h-full select-none no-print text-white shadow-[0_12px_35px_rgba(28,28,26,.14)] overflow-y-auto">
@@ -103,6 +105,11 @@ export const Sidebar: React.FC<SidebarProps> = ({
               >
                 <Icon className={`w-4 h-4 shrink-0 ${isActive ? 'text-amber-400' : 'text-slate-400'}`} />
                 <span className="truncate">{item.label}</span>
+                {item.id === 'orders' && overdueOrdersCount > 0 && (
+                  <span className="mr-auto min-w-[16px] h-4 px-1 rounded-full bg-rose-600 text-white text-[9px] font-extrabold flex items-center justify-center">
+                    {overdueOrdersCount > 9 ? '9+' : overdueOrdersCount}
+                  </span>
+                )}
               </button>
             );
           })}

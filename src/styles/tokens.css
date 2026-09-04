@@ -547,8 +547,8 @@
 
   .sahwa-empty-state {
     align-items: center;
-    background: var(--color-surface-soft-token);
-    border: 1px dashed var(--color-border-token);
+    background: color-mix(in srgb, var(--color-surface-soft-token) 50%, transparent);
+    border: 1px solid color-mix(in srgb, var(--color-border-token) 60%, transparent);
     border-radius: var(--radius-card-token);
     display: flex;
     flex-direction: column;

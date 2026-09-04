@@ -25,7 +25,7 @@ export const Header: React.FC<HeaderProps> = ({
   onPrintScreen
 }) => {
   return (
-    <header className="relative no-print h-[76px] shrink-0 bg-[var(--ui-surface)] border-b border-[var(--ui-border)] shadow-[0_3px_16px_rgba(28,28,26,.05)] overflow-hidden">
+    <header className="relative no-print min-h-[76px] py-4 shrink-0 bg-[var(--ui-surface)] border-b border-[var(--ui-border)] shadow-[0_3px_16px_rgba(28,28,26,.05)]">
       {/* Top ornamental brass band */}
       <div className="absolute inset-x-0 top-0 h-[3px] bg-gradient-to-r from-[var(--ui-brass-soft)] via-[#c9a35f] to-[var(--ui-brass-soft)]" />
 
@@ -46,7 +46,7 @@ export const Header: React.FC<HeaderProps> = ({
           </div>
 
           <div className="min-w-0">
-            <h1 className="text-sm sm:text-base font-extrabold text-[var(--ui-charcoal)] tracking-tight flex items-center gap-2">
+            <h1 className="text-sm sm:text-base font-extrabold text-[var(--ui-charcoal)] tracking-tight flex items-center gap-2 line-clamp-1">
               <span className="text-[var(--ui-brass)] text-[10px] leading-none">◆</span>
               <span className="truncate">{title}</span>
               <span className="text-[var(--ui-brass)] text-[10px] leading-none">◆</span>

@@ -156,6 +156,16 @@ export default function App() {
     [data?.notifications]
   );
 
+  const overdueOrdersCount = useMemo(
+    () => (data?.orders ?? []).filter((order) =>
+      order.status !== 'delivered' &&
+      order.status !== 'cancelled' &&
+      order.deliveryDate &&
+      order.deliveryDate <= new Date().toISOString().slice(0, 10)
+    ).length,
+    [data?.orders]
+  );
+
   const headerInfo = useMemo(() => {
     switch (prefs.activeTab) {
       case 'dashboard': return { title: 'لوحة التحكم والمتابعة', description: 'نظرة عامة على الطلبات، التنبيهات، ونواقص المخزون' };
@@ -266,6 +276,7 @@ export default function App() {
         onTabChange={handleTabChange}
         onOpenBackupModal={handleOpenBackupModal}
         unreadNotifCount={unreadNotifCount}
+        overdueOrdersCount={overdueOrdersCount}
         managerName={prefs.managerName}
       />
 
