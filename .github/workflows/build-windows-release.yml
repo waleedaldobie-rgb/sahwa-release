@@ -6,9 +6,15 @@ on:
       - 'v*.*.*'
   workflow_dispatch:
     inputs:
-      release_tag:
-        description: 'Existing vX.Y.Z tag to build and verify'
+      source_ref:
+        description: 'Branch, tag, or commit to build'
         required: true
+        default: main
+        type: string
+      release_tag:
+        description: 'Optional new vX.Y.Z tag to publish; leave empty for build-only'
+        required: false
+        default: ''
         type: string
 
 permissions:
@@ -25,31 +31,35 @@ jobs:
     timeout-minutes: 60
 
     steps:
-      - name: Checkout release source
+      - name: Checkout source
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
-          ref: ${{ inputs.release_tag || github.ref }}
-
-      - name: Resolve release identity
+          ref: ${{ inputs.source_ref || github.ref }}
+      - name: Resolve build identity
         id: identity
         shell: pwsh
         env:
           REQUESTED_TAG: ${{ inputs.release_tag }}
+          SOURCE_REF: ${{ inputs.source_ref }}
         run: |
-          $tag = if ($env:REQUESTED_TAG) { $env:REQUESTED_TAG } else { $env:GITHUB_REF_NAME }
-          if ($tag -notmatch '^v\d+\.\d+\.\d+$') {
+          $tag = if ($env:REQUESTED_TAG) { $env:REQUESTED_TAG.Trim() } elseif ($env:GITHUB_REF -match '^refs/tags/v') { $env:GITHUB_REF_NAME } else { '' }
+          if ($tag -and $tag -notmatch '^v\d+\.\d+\.\d+$') {
             throw "Expected a semantic release tag like v1.1.7, got '$tag'."
           }
           $commit = (git rev-parse HEAD).Trim()
-          if (-not $commit) { throw 'Unable to resolve release commit.' }
-          "SAHWA_EXPECTED_VERSION=$tag" >> $env:GITHUB_ENV
+          if (-not $commit) { throw 'Unable to resolve source commit.' }
+          $version = if ($tag) { $tag } else { "main-$env:GITHUB_RUN_NUMBER" }
+          "SAHWA_EXPECTED_VERSION=$version" >> $env:GITHUB_ENV
           "SAHWA_EXPECTED_COMMIT=$commit" >> $env:GITHUB_ENV
-          "RELEASE_TAG=$tag" >> $env:GITHUB_ENV
+          if ($tag) { "RELEASE_TAG=$tag" >> $env:GITHUB_ENV }
           "release_tag=$tag" >> $env:GITHUB_OUTPUT
           "release_commit=$commit" >> $env:GITHUB_OUTPUT
-          Write-Host "Release version: $tag"
-          Write-Host "Release commit: $commit"
+          "source_ref=$((git rev-parse --abbrev-ref HEAD).Trim())" >> $env:GITHUB_OUTPUT
+          Write-Host "Build version: $version"
+          Write-Host "Build source ref: $((git rev-parse --abbrev-ref HEAD).Trim())"
+          Write-Host "Build commit: $commit"
+          if ($tag) { Write-Host "Release tag: $tag" } else { Write-Host 'Build-only mode: no release tag requested.' }
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -216,7 +226,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: sahwa-windows-packaged-acceptance-${{ steps.identity.outputs.release_tag }}-${{ github.run_number }}
+          name: sahwa-windows-packaged-acceptance-${{ steps.identity.outputs.release_tag || 'main' }}-${{ github.run_number }}
           if-no-files-found: warn
           path: |
             test-results/windows-packaged-acceptance/**
@@ -227,7 +237,7 @@ jobs:
           retention-days: 30
 
       - name: Create unsigned GitHub prerelease
-        if: steps.packaged_acceptance.outcome == 'success'
+        if: steps.packaged_acceptance.outcome == 'success' && steps.identity.outputs.release_tag != ''
         shell: pwsh
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
