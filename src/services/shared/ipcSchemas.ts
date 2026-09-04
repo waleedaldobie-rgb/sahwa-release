@@ -276,7 +276,10 @@ export const expenseCreateSchema = z.object({
 
 export const orderCreateSchema = z.object({
   id: ipcOptionalIdSchema,
-  orderNumber: z.union([ipcIdSchema, z.number().int().nonnegative()]).optional(),
+  orderNumber: z.preprocess(
+    (v) => (v === '' ? undefined : v),
+    z.union([ipcIdSchema, z.number().int().nonnegative()]).optional()
+  ),
   customerId: ipcOptionalIdSchema,
   customerName: z.string().trim().min(1).max(200),
   customerPhone: z.string().trim().max(40),

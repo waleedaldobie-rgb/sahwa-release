@@ -406,7 +406,7 @@ export const OrdersView: React.FC<OrdersViewProps> = ({
     const newOrderNumber = '';
     const newOrder: Order = {
       id: createSafeId('ORD'),
-      orderNumber: newOrderNumber,
+      ...(newOrderNumber ? { orderNumber: newOrderNumber } : {}),
       customerId: customer.id,
       customerNumber: customer.customerNumber,
       customerName: customer.name,
@@ -434,6 +434,10 @@ export const OrdersView: React.FC<OrdersViewProps> = ({
     try {
       if (shouldPersistCustomer) await onSaveCustomer?.(customer);
       const savedOrder = await onSaveOrder(newOrder);
+      if (!savedOrder) {
+        showToast('تعذر حفظ الطلب. يرجى المحاولة مرة أخرى.', 'danger');
+        return;
+      }
       try {
         localStorage.removeItem(draftKeyFor(customer.name, customer.phone, 'new-order'));
       } catch { }
