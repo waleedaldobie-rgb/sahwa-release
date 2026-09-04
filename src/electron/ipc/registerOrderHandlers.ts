@@ -132,16 +132,17 @@ export function registerOrderHandlers(deps: OrderHandlersDeps): void {
     const input = parseIpcInput(orderCreateSchema, raw, 'بيانات الطلب');
     const settings = dbManager.getSettings();
     const result = orderService.createOrder(input as unknown as Partial<Order>, settings.fabricConsumptionRatePerGarment || 3.5);
+    const { orderNumber: _inputOrderNumber, ...restInput } = input as any;
     return {
-      ...input,
+      ...restInput,
       id: result.orderId,
       orderNumber: result.orderNumber,
       remainingAmount: result.remainingAmount,
       materialUsages: result.materialUsages,
       materialCost: result.materialCost,
       profit: result.profit,
-      measurements: normalizeMeasurements(input.measurements as never),
-      styleDetails: normalizeStyleDetails(input.styleDetails as never)
+      measurements: normalizeMeasurements(restInput.measurements as never),
+      styleDetails: normalizeStyleDetails(restInput.styleDetails as never)
     };
   });
   safeIpcHandle(ipcMain, 'orders:update', async (_, raw: unknown) => {
