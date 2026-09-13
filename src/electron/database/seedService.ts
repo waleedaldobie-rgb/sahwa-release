@@ -68,7 +68,8 @@ export function seedInitialDataIfEmpty(db: Database.Database): void {
   ];
 
   const seedTx = db.transaction(() => {
-    const cStmt = db.prepare('INSERT INTO customers (id, customer_number, name, phone, created_at, measurements_json, style_details_json) VALUES (?, ?, ?, ?, ?, ?, ?)');
+    // Keep first-run seeding safe for partially initialized databases.
+    const cStmt = db.prepare('INSERT OR IGNORE INTO customers (id, customer_number, name, phone, created_at, measurements_json, style_details_json) VALUES (?, ?, ?, ?, ?, ?, ?)');
     seedCustomers.forEach((c, index) => cStmt.run(c.id, index + 1, c.name, c.phone, c.createdAt, JSON.stringify(c.measurements), JSON.stringify(c.styleDetails)));
 
     db.prepare(`
@@ -82,16 +83,16 @@ export function seedInitialDataIfEmpty(db: Database.Database): void {
       ON CONFLICT(name) DO UPDATE SET next_number = MAX(visible_number_sequences.next_number, excluded.next_number)
     `).run();
 
-    const fStmt = db.prepare('INSERT INTO fabrics (id, name, color, color_hex, purchase_price, selling_price, quantity_meters, min_stock_meters, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)');
+    const fStmt = db.prepare('INSERT OR IGNORE INTO fabrics (id, name, color, color_hex, purchase_price, selling_price, quantity_meters, min_stock_meters, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)');
     seedFabrics.forEach(f => fStmt.run(f.id, f.name, f.color, f.colorHex, f.purchasePrice, f.sellingPrice, f.quantityMeters, f.minStockMeters, new Date().toISOString()));
 
-    const aStmt = db.prepare('INSERT INTO accessories (id, name, category, quantity, min_stock, unit, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)');
+    const aStmt = db.prepare('INSERT OR IGNORE INTO accessories (id, name, category, quantity, min_stock, unit, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)');
     seedAccessories.forEach(a => aStmt.run(a.id, a.name, a.category, a.quantity, a.minStock, a.unit, new Date().toISOString()));
 
-    const tStmt = db.prepare('INSERT INTO dress_types (id, name, default_price, description) VALUES (?, ?, ?, ?)');
+    const tStmt = db.prepare('INSERT OR IGNORE INTO dress_types (id, name, default_price, description) VALUES (?, ?, ?, ?)');
     seedThobeTypes.forEach(t => tStmt.run(t.id, t.name, t.defaultPrice, t.description));
 
-    const colStmt = db.prepare('INSERT INTO colors (id, name, hex) VALUES (?, ?, ?)');
+    const colStmt = db.prepare('INSERT OR IGNORE INTO colors (id, name, hex) VALUES (?, ?, ?)');
     seedColors.forEach(cl => colStmt.run(cl.id, cl.name, cl.hex));
   });
 

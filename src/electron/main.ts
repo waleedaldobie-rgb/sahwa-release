@@ -8,6 +8,17 @@ import { isAllowedExternalUrl, isSameOriginNavigation } from './security/navigat
 let mainWindow: BrowserWindow | null = null;
 let dbManager: SahwaDatabaseManager | null = null;
 let isClosing = false;
+const hasSingleInstanceLock = app.requestSingleInstanceLock();
+
+if (!hasSingleInstanceLock) {
+  app.quit();
+}
+
+app.on('second-instance', () => {
+  if (!mainWindow) return;
+  if (mainWindow.isMinimized()) mainWindow.restore();
+  mainWindow.focus();
+});
 
 async function closeResourcesOnce(): Promise<void> {
   if (isClosing) return;
@@ -116,7 +127,7 @@ function createWindow() {
   });
 }
 
-app.on('ready', createWindow);
+if (hasSingleInstanceLock) app.on('ready', createWindow);
 
 app.on('window-all-closed', () => {
   void (async () => {
