@@ -145,7 +145,7 @@ export const InvoicesView: React.FC<InvoicesViewProps> = ({
   return (
     <div className="view-wrapper animate-in fade-in duration-300" dir="rtl">
       {/* Printable Area */}
-      {selectedInvoice && !isPreviewModalOpen && (
+      {selectedInvoice && (
         <div className="hidden-on-screen">
           <PrintableInvoice
             invoice={selectedInvoice}
