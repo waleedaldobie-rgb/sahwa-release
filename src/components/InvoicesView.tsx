@@ -123,7 +123,17 @@ export const InvoicesView: React.FC<InvoicesViewProps> = ({
     }
   };
 
-  const handlePrintInvoice = () => {
+  const handlePrintInvoice = async () => {
+    if (window.electronAPI.printDirect) {
+      try {
+        const result = await window.electronAPI.printDirect({ pageSize: 'A4' });
+        showToast(`تم إرسال الفاتورة إلى ${result.printerName}`, 'success');
+      } catch (error) {
+        const message = error instanceof Error ? error.message : 'تعذر إرسال الفاتورة إلى الطابعة';
+        showToast(message, 'danger');
+      }
+      return;
+    }
     window.print();
   };
 

@@ -552,6 +552,7 @@ declare global {
       savePreferences: (prefs: Partial<UserPreferences>) => Promise<boolean>;
       clearAllData: () => Promise<boolean>;
       sendWhatsAppNotice: (request: WhatsAppSendRequest) => Promise<boolean>;
+      printDirect?: (options?: { deviceName?: string; pageSize?: 'A4' }) => Promise<{ success: boolean; printerName: string }>;
       printDocument: () => void;
       
       db?: {

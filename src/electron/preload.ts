@@ -108,6 +108,7 @@ export const electronBridge = {
 
   sendWhatsAppNotice: (request: WhatsAppSendRequest) => ipcRenderer.invoke('whatsapp:send', request),
 
+  printDirect: (options?: { deviceName?: string; pageSize?: 'A4' }) => ipcRenderer.invoke('printers:printDirect', options),
   printDocument: () => window.print()
 };
 

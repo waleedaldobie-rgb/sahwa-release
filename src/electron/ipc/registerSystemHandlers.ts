@@ -90,6 +90,37 @@ export function registerSystemHandlers(deps: SystemHandlersDeps): void {
     return true;
   });
 
+  safeIpcHandle(ipcMain, 'printers:printDirect', async (event, options?: { deviceName?: string; pageSize?: 'A4' }) => {
+    const printers = await event.sender.getPrintersAsync() as Electron.PrinterInfo[];
+    if (printers.length === 0) {
+      throw new Error('لم يتم العثور على أي طابعة مثبتة في Windows');
+    }
+
+    const requestedName = typeof options?.deviceName === 'string' ? options.deviceName.trim() : '';
+    const printer = requestedName
+      ? printers.find((item) => item.name === requestedName || item.displayName === requestedName)
+      : undefined;
+
+    if (requestedName && !printer) {
+      throw new Error('الطابعة المحددة غير موجودة أو غير متصلة');
+    }
+
+    await new Promise<void>((resolve, reject) => {
+      event.sender.print({
+        silent: true,
+        ...(printer ? { deviceName: printer.name } : {}),
+        pageSize: options?.pageSize || 'A4',
+        printBackground: true,
+        margins: { marginType: 'none' }
+      }, (success: boolean, failureReason: string) => {
+        if (success) resolve();
+        else reject(new Error(failureReason || `تعذر إرسال الطباعة إلى طابعة Windows الافتراضية`));
+      });
+    });
+
+    return { success: true, printerName: printer?.displayName || printer?.name || 'الطابعة الافتراضية' };
+  });
+
   safeIpcHandle(ipcMain, 'whatsapp:send', async (_, request: unknown) => {
     const input = parseIpcInput(whatsappSendArgsSchema, request, 'بيانات رسالة WhatsApp');
     const prepared = whatsappService.prepareMessage(input.phone, input.customerName, input.orderNumber, input.statusText);
