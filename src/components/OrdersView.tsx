@@ -547,18 +547,7 @@ export const OrdersView: React.FC<OrdersViewProps> = ({
   const handlePrintOrderSheet = (order: Order) => {
     setPrintableOrder(order);
     setTimeout(() => {
-      void (async () => {
-        if (window.electronAPI.printDirect) {
-          try {
-            const result = await window.electronAPI.printDirect({ pageSize: 'A4' });
-            showToast(`تم إرسال الفاتورة إلى ${result.printerName}`, 'success');
-          } catch (error) {
-            showToast(error instanceof Error ? error.message : 'تعذر إرسال الفاتورة إلى الطابعة', 'danger');
-          }
-          return;
-        }
-        window.print();
-      })();
+      window.print();
     }, 150);
   };
 
