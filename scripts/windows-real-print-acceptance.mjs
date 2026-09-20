@@ -82,7 +82,7 @@ async function createFixture(pageRef) {
   await expect(pageRef.getByRole('row', { name: /عميل اختبار الطباعة/ })).toBeVisible();
   await openOrders(pageRef);
   await pageRef.getByTestId('orders-add').click();
-  await pageRef.getByTestId('order-customer-select').selectOption({ label: /عميل اختبار الطباعة/ });
+  await pageRef.getByTestId('order-customer-select').selectOption({ label: 'عميل اختبار الطباعة - (0500000999)' });
   const data = await pageRef.evaluate(() => window.electronAPI.getData());
   const fabric = data.fabrics.find((item) => item.name === 'طباعة اختبار قماش');
   const thobe = data.thobeTypes.find((item) => Number(item.defaultPrice) > 0) || data.thobeTypes[0];
