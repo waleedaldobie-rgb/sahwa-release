@@ -1864,6 +1864,27 @@ input:focus, select:focus, textarea:focus {
     background: #ffffff !important;
   }
 
+  /* The screen view wrapper contributes its 2rem bottom padding and flex gap
+     even when only the hidden invoice copy is printed. Those extra pixels can
+     push a long invoice into an otherwise empty third 15×21cm page. */
+  .view-wrapper {
+    min-height: 0 !important;
+    padding: 0 !important;
+    gap: 0 !important;
+  }
+
+  main {
+    padding: 0 !important;
+  }
+
+  main > *:first-child {
+    display: none !important;
+  }
+
+  main > div[class*="p-"] {
+    padding: 0 !important;
+  }
+
   .hidden-on-screen {
     page-break-after: auto !important;
     break-after: auto !important;
@@ -1888,13 +1909,13 @@ input:focus, select:focus, textarea:focus {
     max-width: none !important;
     min-height: 0 !important;
     height: auto !important;
-    page-break-after: avoid !important;
-    break-after: avoid-page !important;
+    page-break-after: auto !important;
+    break-after: auto !important;
     margin: 0 !important;
     padding: 4mm !important;
     box-sizing: border-box !important;
     position: relative !important;
-    border: 1px solid #111111 !important;
+    border: none !important;
     border-radius: 0 !important;
     box-shadow: none !important;
     font-size: 10.5px !important;
@@ -2197,6 +2218,7 @@ input:focus, select:focus, textarea:focus {
   }
 
   .invoice-luxury-footer {
+    display: none !important;
     margin-top: 4px !important;
     padding-top: 3px !important;
     font-size: 6.5px !important;

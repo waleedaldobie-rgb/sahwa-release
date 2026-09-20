@@ -1,5 +1,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
+import { execFileSync } from 'node:child_process';
 
 const port = process.env.CDP_PORT || '9333';
 const outputDir = process.env.DESKTOP_VISUAL_OUTPUT_DIR || path.join(process.cwd(), 'test-results', 'desktop-visual-viewport');
@@ -7,6 +8,7 @@ const visualStates = (process.env.DESKTOP_VISUAL_STATES || 'populated,loading,er
   .split(',')
   .map((state) => state.trim())
   .filter(Boolean);
+const printFixture = process.env.DESKTOP_PRINT_FIXTURE || 'long';
 const viewportCases = [
   { name: '1280x800', width: 1280, height: 800 },
   { name: '1440x900', width: 1440, height: 900 },
@@ -387,8 +389,20 @@ function statePassed(state, snapshotResult) {
   if (state === 'populated') return base && snapshotResult.hasReportHeading && snapshotResult.tableCount > 0 && snapshotResult.tableRows > 0;
   if (state === 'loading') return base && snapshotResult.hasLoadingSignal;
   if (state === 'error') return base && snapshotResult.hasCustomerHeading && snapshotResult.hasErrorSignal;
-  if (state === 'print') return base && snapshotResult.hasPrintPreview && snapshotResult.bodyText.includes('ملاحظة اختبار طباعة طويلة');
+  if (state === 'print') return base && snapshotResult.hasPrintPreview && (printFixture === 'short' || snapshotResult.bodyText.includes('ملاحظة اختبار طباعة طويلة'));
   return false;
+}
+
+function inspectPdf(pdfPath) {
+  const info = execFileSync('pdfinfo', [pdfPath], { encoding: 'utf8' });
+  const pageCount = Number(info.match(/^Pages:\s+(\d+)/m)?.[1] || 0);
+  const pageSize = info.match(/^Page size:\s+(.+)$/m)?.[1]?.trim() || '';
+  const pages = Array.from({ length: pageCount }, (_, index) => {
+    const text = execFileSync('pdftotext', ['-f', String(index + 1), '-l', String(index + 1), pdfPath, '-'], { encoding: 'utf8' });
+    return { page: index + 1, textLength: text.trim().length, hasInvoiceData: text.trim().length > 0 };
+  });
+  const blankPages = pages.filter((page) => page.textLength === 0).map((page) => page.page);
+  return { pageCount, pageSize, pages, blankPages, passed: pageSize === '425.04 x 594.96 pts' && pageCount > 0 && blankPages.length === 0 && pages.every((page) => page.hasInvoiceData) };
 }
 
 async function captureScreenshotPng() {
@@ -443,6 +457,15 @@ async function captureState(state, viewport, resizeMode, windowId, fixture) {
       await waitForText('معاينة الفاتورة', 10_000);
     }
     await waitForText('ملاحظة اختبار طباعة طويلة', 10_000);
+    if (printFixture === 'long') {
+      await evaluate(`(() => {
+        const host = document.querySelector('.hidden-on-screen .invoice-luxury-container');
+        const boxes = host ? Array.from(host.querySelectorAll('.notes-content-box')) : [];
+        const extra = Array.from({ length: 42 }, (_, index) => 'سطر اختبار طويل ' + (index + 1) + ': نص إضافي للتحقق من الانقسام الطبيعي بين صفحات ورق 15×21 سم دون قص أو تداخل.').join('\\n');
+        boxes.forEach((box) => { box.textContent = (box.textContent || '') + '\\n' + extra; });
+        return { boxes: boxes.length, height: host?.getBoundingClientRect().height || 0, scrollHeight: host?.scrollHeight || 0 };
+      })()`);
+    }
     await sleep(350);
   }
 
@@ -468,7 +491,14 @@ async function captureState(state, viewport, resizeMode, windowId, fixture) {
     const pdfData = await evaluate(`window.electronAPI.automationPrintToPDF({ printBackground: true, preferCSSPageSize: true })`);
     if (typeof pdfData !== 'string' || pdfData.length < 100) throw new Error(`لم تُرجع Electron ملف PDF صالحًا للحجم ${viewport.name}`);
     pdf = `${prefix}.pdf`;
-    fs.writeFileSync(path.join(outputDir, pdf), Buffer.from(pdfData, 'base64'));
+    const pdfPath = path.join(outputDir, pdf);
+    fs.writeFileSync(pdfPath, Buffer.from(pdfData, 'base64'));
+    const pdfInspection = inspectPdf(pdfPath);
+    if (!pdfInspection.passed) {
+      fs.writeFileSync(path.join(outputDir, `${prefix}-failed-pdf.json`), JSON.stringify({ pdfInspection, printLayout }, null, 2));
+      throw new Error(`فشل تحقق PDF للحالة ${viewport.name}: ${JSON.stringify(pdfInspection)}`);
+    }
+    printLayout.pdfInspection = pdfInspection;
     await command('Emulation.setEmulatedMedia', { media: 'screen' });
   }
 
@@ -507,7 +537,7 @@ if (!fixture.available) {
 }
 await resetApp();
 if (visualStates.includes('print')) {
-  const printPrepared = await prepareLongPrintFixture(fixture);
+  const printPrepared = printFixture === 'short' ? true : await prepareLongPrintFixture(fixture);
   if (!printPrepared) {
     await restoreVisualFixture().catch(() => undefined);
     throw new Error('تعذر تجهيز بيانات الطباعة الطويلة؛ يلزم توفر updateOrder في جسر Electron');
