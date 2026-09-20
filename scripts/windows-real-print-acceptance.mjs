@@ -102,6 +102,7 @@ async function createFixture(pageRef) {
   const longOrder = await pageRef.evaluate(async (source) => window.electronAPI.createOrder({
     ...source,
     id: `PRINT-LONG-${Date.now()}`,
+    orderNumber: undefined,
     totalAmount: 880,
     paidAmount: 0,
     remainingAmount: 880,
