@@ -138,6 +138,18 @@ async function waitForTestId(testId, timeout = 10_000) {
   return false;
 }
 
+async function getPrinterSnapshot() {
+  return evaluate(`(async () => {
+    if (!window.electronAPI?.listPrinters) return { available: false, printers: [], reason: 'Printer bridge unavailable' };
+    try {
+      const printers = await window.electronAPI.listPrinters();
+      return { available: true, printers };
+    } catch (error) {
+      return { available: false, printers: [], reason: error?.message || String(error) };
+    }
+  })()`);
+}
+
 async function resetApp() {
   await command('Page.reload', { ignoreCache: true });
   await waitForRoot();
@@ -485,6 +497,7 @@ try {
 }
 
 const results = [];
+const printerSnapshot = await getPrinterSnapshot();
 try {
   for (const state of visualStates) {
     if (!['populated', 'loading', 'error', 'print'].includes(state)) throw new Error(`حالة بصرية غير مدعومة: ${state}`);
@@ -512,6 +525,7 @@ const summary = {
   resizeMode,
   states: visualStates,
   fixture,
+  printerSnapshot,
   cases: results,
   passed: results.every((result) => result.passed),
   count: {
