@@ -338,6 +338,19 @@ async function snapshot(state, viewport, fixture) {
     const hasLoadingSignal = bodyText.includes('جاري تحميل نظام صهوة للخياطة') || bodyText.includes('جاري تحميل الصفحة') || document.querySelector('svg.animate-spin') !== null;
     const hasErrorSignal = alerts.length > 0 || bodyText.includes('يرجى مراجعة الحقول المحددة قبل الحفظ') || bodyText.includes('يرجى إدخال اسم العميل بشكل صحيح');
     const tableRows = Array.from(document.querySelectorAll('tbody tr')).filter((row) => row.querySelectorAll('td').length > 0).length;
+    const printableNodes = Array.from(document.querySelectorAll('.invoice-luxury-container')).map((element) => {
+      const style = getComputedStyle(element);
+      const rect = element.getBoundingClientRect();
+      return {
+        display: style.display,
+        visibility: style.visibility,
+        width: rect.width,
+        height: rect.height,
+        scrollHeight: element.scrollHeight,
+        pageBreakAfter: style.pageBreakAfter,
+        breakAfter: style.breakAfter
+      };
+    });
     return {
       state: ${JSON.stringify(state)},
       expected: ${JSON.stringify(viewport)},
@@ -357,6 +370,9 @@ async function snapshot(state, viewport, fixture) {
       cardCount: document.querySelectorAll('.sahwa-card, .ui-card').length,
       tableCount: document.querySelectorAll('table').length,
       tableRows,
+      printableNodes,
+      documentScrollHeight: document.documentElement.scrollHeight,
+      bodyScrollHeight: document.body.scrollHeight,
       emptyStates,
       fixture,
       bodyText: bodyText.slice(0, 1600)
