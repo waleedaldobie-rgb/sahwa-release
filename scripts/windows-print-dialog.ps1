@@ -1,7 +1,7 @@
 param(
   [Parameter(Mandatory=$true)][string]$PrinterName,
   [Parameter(Mandatory=$true)][string]$OutputPath,
-  [string[]]$ExpectedText = @(),
+  [string]$ExpectedText = '',
   [int]$TimeoutSeconds = 75
 )
 $ErrorActionPreference = 'Stop'
@@ -33,6 +33,7 @@ function Set-Text($Element, [string]$Value) {
   try { $pattern = $Element.GetCurrentPattern([System.Windows.Automation.ValuePattern]::Pattern); $pattern.SetValue($Value); return $true } catch { return $false }
 }
 
+$expectedTextList = if ($ExpectedText) { @($ExpectedText -split '\|') } else { @() }
 $beforeJobs = @(Get-PrinterJobs)
 $root = [System.Windows.Automation.AutomationElement]::RootElement
 $deadline = (Get-Date).AddSeconds($TimeoutSeconds)
@@ -146,9 +147,9 @@ if ($outputExists -and (Get-Command pdftotext.exe -ErrorAction SilentlyContinue)
   $textPath = "$OutputPath.txt"
   & pdftotext.exe -layout $OutputPath $textPath 2>$null
   $text = if (Test-Path $textPath) { Get-Content -Raw $textPath } else { '' }
-  $missing = @($ExpectedText | Where-Object { $text -notmatch [regex]::Escape($_) })
+  $missing = @($expectedTextList | Where-Object { $text -notmatch [regex]::Escape($_) })
   $expectedTextPresent = $missing.Count -eq 0
-  $textDetail = if ($expectedTextPresent) { "All expected text found: $($ExpectedText -join ', ')" } else { "Missing expected text: $($missing -join ', ')" }
+  $textDetail = if ($expectedTextPresent) { "All expected text found: $($expectedTextList -join ', ')" } else { "Missing expected text: $($missing -join ', ')" }
 }
 $newJobIds = @($jobSnapshots | ForEach-Object { $_ } | Where-Object { $_.Id -notin @($beforeJobs | ForEach-Object Id) } | Select-Object -ExpandProperty Id -Unique)
 $status = if ($outputExists -and $outputBytes -gt 0) { 'PASS' } else { 'FAIL' }

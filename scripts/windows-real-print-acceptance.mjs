@@ -26,7 +26,7 @@ function ps(command) {
 function waitForMonitor(outputPath, printerName, expectedText) {
   return new Promise((resolve, reject) => {
     const args = ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File', dialogScript, '-PrinterName', printerName, '-OutputPath', outputPath, '-TimeoutSeconds', '75'];
-    for (const text of expectedText) args.push('-ExpectedText', text);
+    args.push('-ExpectedText', expectedText.join('|'));
     const child = spawn('powershell.exe', args, { windowsHide: false });
     let stdout = '';
     let stderr = '';
