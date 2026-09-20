@@ -1,7 +1,9 @@
 name: Build Windows Installer
 
 on:
-  workflow_dispatch:
+  push:
+    branches:
+      - windows-build-test
 
 permissions:
   contents: read
