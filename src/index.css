@@ -1869,6 +1869,13 @@ input:focus, select:focus, textarea:focus {
     break-after: auto !important;
   }
 
+  /* Keep the dedicated invoice copy in flow and remove the surrounding
+     invoices screen from print layout; otherwise its hidden table height can
+     create a trailing blank 15×21cm page. */
+  .view-wrapper > .hidden-on-screen ~ * {
+    display: none !important;
+  }
+
   /* The preview modal contains a second PrintableInvoice instance. Keep the
      dedicated hidden print copy as the sole physical/PDF output. */
   .modal-print-host {
