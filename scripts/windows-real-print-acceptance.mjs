@@ -91,6 +91,9 @@ async function createFixture(pageRef) {
   await pageRef.getByLabel('السعر الكلي (ر.س) *', { exact: true }).fill('275');
   await pageRef.getByLabel('المبلغ المدفوع (عربون) *', { exact: true }).fill('275');
   await pageRef.getByTestId('order-measurement-frontLength').fill('25');
+  await pageRef.getByTestId('order-measurement-backLength').fill('25');
+  await pageRef.getByTestId('order-measurement-shoulderWidth').fill('18');
+  await pageRef.getByTestId('order-measurement-sleeveLength').fill('24');
   await pageRef.getByTestId('order-save').click();
   await expect(pageRef.getByRole('dialog')).toBeHidden({ timeout: 20_000 });
   const after = await pageRef.evaluate(() => window.electronAPI.getData());
