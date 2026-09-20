@@ -453,11 +453,23 @@ async function captureState(state, viewport, resizeMode, windowId, fixture) {
   fs.writeFileSync(path.join(outputDir, `${prefix}.png`), screenshot);
   fs.writeFileSync(path.join(outputDir, `${prefix}.json`), JSON.stringify(snapshotResult, null, 2));
   let pdf;
+  let printLayout;
   if (state === 'print') {
+    await command('Emulation.setEmulatedMedia', { media: 'print' });
+    printLayout = await evaluate(`(() => ({
+      media: window.matchMedia('print').matches,
+      body: { display: getComputedStyle(document.body).display, height: document.body.getBoundingClientRect().height, scrollHeight: document.body.scrollHeight },
+      printable: Array.from(document.querySelectorAll('.printable-area, .invoice-luxury-container, .modal-print-host, .hidden-on-screen')).map((element) => {
+        const style = getComputedStyle(element);
+        const rect = element.getBoundingClientRect();
+        return { className: element.className, display: style.display, visibility: style.visibility, width: rect.width, height: rect.height, scrollHeight: element.scrollHeight, pageBreakAfter: style.pageBreakAfter, breakAfter: style.breakAfter };
+      })
+    }))()`);
     const pdfData = await evaluate(`window.electronAPI.automationPrintToPDF({ printBackground: true, preferCSSPageSize: true })`);
     if (typeof pdfData !== 'string' || pdfData.length < 100) throw new Error(`لم تُرجع Electron ملف PDF صالحًا للحجم ${viewport.name}`);
     pdf = `${prefix}.pdf`;
     fs.writeFileSync(path.join(outputDir, pdf), Buffer.from(pdfData, 'base64'));
+    await command('Emulation.setEmulatedMedia', { media: 'screen' });
   }
 
   const passed = statePassed(state, snapshotResult);
@@ -477,6 +489,7 @@ async function captureState(state, viewport, resizeMode, windowId, fixture) {
     hasErrorSignal: snapshotResult.hasErrorSignal,
     emptyStates: snapshotResult.emptyStates,
     screenshot: `${prefix}.png`,
+    ...(printLayout ? { printLayout } : {}),
     ...(pdf ? { pdf } : {})
   };
   if (!passed) throw new Error(`فشل الفحص البصري لحالة ${state} وحجم ${viewport.name}: ${JSON.stringify(result)}`);
