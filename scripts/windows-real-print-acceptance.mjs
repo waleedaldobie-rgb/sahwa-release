@@ -127,7 +127,7 @@ async function printOrder(pageRef, orderNumber, kind, printer) {
   fs.writeFileSync(path.join(evidenceDir, `${kind}-print-job.json`), JSON.stringify(printEvidence, null, 2));
   if (printEvidence.status === 'NOT_TESTABLE') {
     result(`${kind}.print-pipeline`, 'NOT_TESTABLE', printEvidence.detail || 'Native Print Dialog automation unavailable.');
-    return;
+    return false;
   }
   assert(printEvidence.printButtonClicked, 'Windows Print dialog was not confirmed as submitted.');
   assert(printEvidence.outputFileExists && printEvidence.outputFileBytes > 0, 'Virtual printer output file was not created or is empty.');
@@ -137,6 +137,7 @@ async function printOrder(pageRef, orderNumber, kind, printer) {
   result(`${kind}.pdf-metrics`, pageStatus, `page_size=${printEvidence.pageSize || 'unavailable'}; pages=${printEvidence.pageCount ?? 'unavailable'}`);
   const pipelineStatus = textStatus === 'FAIL' || pageStatus === 'FAIL' ? 'FAIL' : textStatus === 'NOT_TESTABLE' || pageStatus === 'NOT_TESTABLE' ? 'NOT_TESTABLE' : 'PASS';
   result(`${kind}.print-pipeline`, pipelineStatus, `printer=${printer.Name}; output=${outputPath}; bytes=${printEvidence.outputFileBytes}; job_seen=${printEvidence.printJobSeen}; job_ids=${JSON.stringify(printEvidence.jobIds || [])}`);
+  return pipelineStatus === 'PASS';
 }
 
 try {
@@ -147,8 +148,12 @@ try {
   const fixtures = await createFixture(page);
   result('short.invoice-creation', 'PASS', `order=${fixtures.shortOrder.orderNumber}; invoice=INV-${fixtures.shortOrder.orderNumber}`);
   result('long.invoice-creation', 'PASS', `order=${fixtures.longOrder.orderNumber}; invoice=INV-${fixtures.longOrder.orderNumber}`);
-  await printOrder(page, fixtures.shortOrder.orderNumber, 'short', printer);
-  await printOrder(page, fixtures.longOrder.orderNumber, 'long', printer);
+  const shortPrintTestable = await printOrder(page, fixtures.shortOrder.orderNumber, 'short', printer);
+  if (shortPrintTestable) {
+    await printOrder(page, fixtures.longOrder.orderNumber, 'long', printer);
+  } else {
+    result('long.print-pipeline', 'NOT_TESTABLE', 'Skipped because the Windows native Print Dialog was not exposed in this CI session.');
+  }
 } catch (error) {
   result('real-print-harness', 'FAIL', error instanceof Error ? error.stack || error.message : String(error));
 } finally {
