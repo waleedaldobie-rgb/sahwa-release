@@ -28,10 +28,25 @@ jobs:
 
       - name: Install dependencies
         env:
-          npm_config_python: ${{ env.pythonLocation }}\\python.exe
+          npm_config_python: ${{ env.pythonLocation }}\python.exe
+        shell: pwsh
         run: |
           npm ci
-          npm install --no-save --no-package-lock @rollup/rollup-win32-x64-msvc@4.62.4
+          $archive = (npm pack --silent @rollup/rollup-win32-x64-msvc@4.62.4).Trim()
+          if (-not $archive -or -not (Test-Path $archive)) {
+            throw 'Rollup Windows native package archive was not created.'
+          }
+          $extractDir = Join-Path $env:RUNNER_TEMP 'rollup-native-package'
+          if (Test-Path $extractDir) { Remove-Item $extractDir -Recurse -Force }
+          New-Item -ItemType Directory -Force -Path $extractDir | Out-Null
+          tar -xzf $archive -C $extractDir
+          $target = 'node_modules/@rollup/rollup-win32-x64-msvc'
+          New-Item -ItemType Directory -Force -Path $target | Out-Null
+          Copy-Item -Path (Join-Path $extractDir 'package\*') -Destination $target -Recurse -Force
+          Remove-Item $archive -Force
+          if (-not (Test-Path (Join-Path $target 'package.json'))) {
+            throw 'Rollup Windows native package was not installed.'
+          }
 
       - name: Verify TypeScript and automated tests
         run: |
@@ -39,23 +54,33 @@ jobs:
           npm test
 
       - name: Build Windows installer
-        run: npm run dist -- --publish never
+        run: npm run dist:windows -- --publish never
 
       - name: Publish installer checksum in workflow summary
         shell: pwsh
         run: |
           $installer = Get-ChildItem -Path release -Filter '*Setup*.exe' | Select-Object -First 1
           if (-not $installer) { throw 'Setup.exe was not created in the release folder.' }
+          $blockmap = Get-ChildItem -Path release -Filter '*.blockmap' -File | Select-Object -First 1
+          if (-not $blockmap) { throw 'No .blockmap file was created in the release folder.' }
+          $latest = Get-ChildItem -Path release -Filter 'latest.yml' -File | Select-Object -First 1
+          if (-not $latest) { throw 'latest.yml was not created in the release folder.' }
           $hash = (Get-FileHash -Algorithm SHA256 $installer.FullName).Hash
           "## Sahwa Tailoring Windows Installer" >> $env:GITHUB_STEP_SUMMARY
           "" >> $env:GITHUB_STEP_SUMMARY
           "- File: ``$($installer.Name)``" >> $env:GITHUB_STEP_SUMMARY
+          "- Size: ``$($installer.Length) bytes``" >> $env:GITHUB_STEP_SUMMARY
           "- SHA-256: ``$hash``" >> $env:GITHUB_STEP_SUMMARY
+          "- Blockmap: ``$($blockmap.Name)``" >> $env:GITHUB_STEP_SUMMARY
+          "- Metadata: ``$($latest.Name)``" >> $env:GITHUB_STEP_SUMMARY
 
       - name: Upload Setup.exe artifact
         uses: actions/upload-artifact@v4
         with:
           name: Sahwa-Tailoring-Windows-Setup
-          path: release/*Setup*.exe
+          path: |
+            release/*.exe
+            release/*.blockmap
+            release/latest.yml
           if-no-files-found: error
           retention-days: 30
