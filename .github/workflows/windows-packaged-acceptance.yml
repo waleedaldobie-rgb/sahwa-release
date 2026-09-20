@@ -209,6 +209,23 @@ jobs:
           if (@($results.runtimeErrors).Count -gt 0) { throw 'Acceptance reported runtime errors.' }
           "WINDOWS_PACKAGED_ACCEPTANCE=PASS commit=$env:SAHWA_EXPECTED_COMMIT" >> $env:GITHUB_STEP_SUMMARY
 
+      - name: Run real Windows Print System acceptance
+        id: real-print
+        shell: pwsh
+        env:
+          SAHWA_REAL_PRINT_EVIDENCE: ${{ github.workspace }}\test-results\windows-real-print
+          SAHWA_REAL_PRINT_DATA: ${{ runner.temp }}\SahwaRealPrintData
+        run: |
+          if (Test-Path $env:SAHWA_REAL_PRINT_EVIDENCE) { Remove-Item $env:SAHWA_REAL_PRINT_EVIDENCE -Recurse -Force }
+          New-Item -ItemType Directory -Force -Path $env:SAHWA_REAL_PRINT_EVIDENCE | Out-Null
+          node scripts/windows-real-print-acceptance.mjs
+          $summaryPath = Join-Path $env:SAHWA_REAL_PRINT_EVIDENCE 'real-print-summary.json'
+          if (-not (Test-Path $summaryPath)) { throw 'Real print summary was not created.' }
+          $summary = Get-Content -Raw $summaryPath | ConvertFrom-Json
+          "REAL_WINDOWS_PRINT_CONCLUSION=$($summary.conclusion)" >> $env:GITHUB_STEP_SUMMARY
+          Get-Content $summaryPath
+          if ($summary.conclusion -like 'FAIL*') { throw 'Real Windows Print System acceptance failed.' }
+
       - name: Cache release files for isolated upload job
         if: success()
         continue-on-error: true
@@ -218,6 +235,7 @@ jobs:
           path: |
             release
             test-results/windows-packaged-acceptance
+            test-results/windows-real-print
 
       - name: Cleanup isolated install directory
         if: always()
@@ -235,6 +253,7 @@ jobs:
           if-no-files-found: warn
           path: |
             test-results/windows-packaged-acceptance/**
+            test-results/windows-real-print/**
             release/**
 
   upload-release-artifacts:
@@ -254,6 +273,7 @@ jobs:
           path: |
             release
             test-results/windows-packaged-acceptance
+            test-results/windows-real-print
 
       - name: Release gate - verify installer, checksum, acceptance, screenshots, CSV, and Excel
         id: release-gate
@@ -285,6 +305,7 @@ jobs:
             release/*Setup*.exe
             release/SHA256SUMS.txt
             test-results/windows-packaged-acceptance/**
+            test-results/windows-real-print/**
 
       - name: Wait 30 seconds before upload retry 2
         if: steps.upload-1.outcome == 'failure'
@@ -304,6 +325,7 @@ jobs:
             release/*Setup*.exe
             release/SHA256SUMS.txt
             test-results/windows-packaged-acceptance/**
+            test-results/windows-real-print/**
 
       - name: Wait 30 seconds before upload retry 3
         if: steps.upload-2.outcome == 'failure'
@@ -323,6 +345,7 @@ jobs:
             release/*Setup*.exe
             release/SHA256SUMS.txt
             test-results/windows-packaged-acceptance/**
+            test-results/windows-real-print/**
 
       - name: Upload summary
         if: always()
