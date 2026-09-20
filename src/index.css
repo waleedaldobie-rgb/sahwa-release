@@ -184,10 +184,10 @@
 
 
 @media print {
-  /* The physical printer output is A4; the invoice body remains a centered 15×21cm layout. */
+  /* All physical printer output targets 15×21cm. */
   @page {
-    size: A4;
-    margin: 4mm;
+    size: 15cm 21cm;
+    margin: 3mm;
   }
 
   @page ticket-page {
@@ -314,7 +314,7 @@
     page-break-after: auto !important;
   }
 
-  /* Compact summary invoice (one page, no forced A4 height, no trailing blank page) */
+  /* Compact summary invoice (one page, no forced height, no trailing blank page) */
   .printable-area-summary {
     min-height: auto !important;
     page-break-after: auto !important;
@@ -326,7 +326,7 @@
     page-break-inside: avoid;
   }
 
-  /* Table styling for print - ensure measurement and invoice tables render clearly in A4 */
+  /* Table styling for print - ensure measurement and invoice tables render clearly. */
   table,
   .printable-area table {
     width: 100% !important;
@@ -371,8 +371,9 @@
 }
 
 /* ========================================================================
-   Unified A4 Invoice
-   ======================================================================== */
+   Unified invoice preview
+   ========================================================================
+ */
 .invoice-sheet {
   width: 100%;
   max-width: 210mm;
@@ -787,7 +788,7 @@
   }
 }
 
-/* Scoped to screen only: an A4 print page (~794px @96dpi) can fall under an
+/* Scoped to screen only: a print page (~794px @96dpi) can fall under an
    unscoped 800px breakpoint and would otherwise collapse the 60/25/15 print
    columns to a single column during printing. */
 @media screen and (max-width: 800px) {
@@ -1863,9 +1864,43 @@ input:focus, select:focus, textarea:focus {
     background: #ffffff !important;
   }
 
+  /* The screen view wrapper contributes its 2rem bottom padding and flex gap
+     even when only the hidden invoice copy is printed. Those extra pixels can
+     push a long invoice into an otherwise empty third 15×21cm page. */
+  .view-wrapper {
+    min-height: 0 !important;
+    padding: 0 !important;
+    gap: 0 !important;
+  }
+
+  main {
+    padding: 0 !important;
+  }
+
+  main > *:first-child {
+    display: none !important;
+  }
+
+  main > div[class*="p-"] {
+    padding: 0 !important;
+  }
+
   .hidden-on-screen {
     page-break-after: auto !important;
     break-after: auto !important;
+  }
+
+  /* Keep the dedicated invoice copy in flow and remove the surrounding
+     invoices screen from print layout; otherwise its hidden table height can
+     create a trailing blank 15×21cm page. */
+  .view-wrapper > .hidden-on-screen ~ * {
+    display: none !important;
+  }
+
+  /* The preview modal contains a second PrintableInvoice instance. Keep the
+     dedicated hidden print copy as the sole physical/PDF output. */
+  .modal-print-host {
+    display: none !important;
   }
 
   .invoice-luxury-container {
@@ -1874,11 +1909,13 @@ input:focus, select:focus, textarea:focus {
     max-width: none !important;
     min-height: 0 !important;
     height: auto !important;
+    page-break-after: auto !important;
+    break-after: auto !important;
     margin: 0 !important;
     padding: 4mm !important;
     box-sizing: border-box !important;
     position: relative !important;
-    border: 1px solid #111111 !important;
+    border: none !important;
     border-radius: 0 !important;
     box-shadow: none !important;
     font-size: 10.5px !important;
@@ -2181,6 +2218,7 @@ input:focus, select:focus, textarea:focus {
   }
 
   .invoice-luxury-footer {
+    display: none !important;
     margin-top: 4px !important;
     padding-top: 3px !important;
     font-size: 6.5px !important;
@@ -2192,7 +2230,7 @@ input:focus, select:focus, textarea:focus {
   .modal-print-host {
     position: absolute !important;
     inset: 0 !important;
-    display: block !important;
+    display: none !important;
     width: 100% !important;
     height: auto !important;
     padding: 0 !important;

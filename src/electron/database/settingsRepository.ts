@@ -40,13 +40,14 @@ export function getUserPreferences(db: Database.Database): UserPreferences {
     shopLogoUrl: values.get('ui.shopLogoUrl') || undefined,
     shopPhone: values.get('ui.shopPhone') || undefined,
     vatNumber: values.get('ui.vatNumber') || undefined,
-    shopAddress: values.get('ui.shopAddress') || undefined
+    shopAddress: values.get('ui.shopAddress') || undefined,
+    invoicePrinterName: values.get('ui.invoicePrinterName') || undefined
   };
 }
 
 export function updateUserPreferences(db: Database.Database, preferences: Partial<UserPreferences>): boolean {
   const allowedKeys: Array<keyof UserPreferences> = [
-    'activeTab', 'invoicePrintMode', 'shopName', 'managerName', 'shopLogoUrl', 'shopPhone', 'vatNumber', 'shopAddress'
+    'activeTab', 'invoicePrintMode', 'shopName', 'managerName', 'shopLogoUrl', 'shopPhone', 'vatNumber', 'shopAddress', 'invoicePrinterName'
   ];
   const update = db.transaction(() => {
     const statement = db.prepare('INSERT OR REPLACE INTO system_settings (key, value) VALUES (?, ?)');

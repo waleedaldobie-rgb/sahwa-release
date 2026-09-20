@@ -83,6 +83,7 @@ export const preferencesSaveArgsSchema = z.object({
   shopPhone: z.string().trim().max(40).optional(),
   vatNumber: z.string().trim().max(100).optional(),
   shopAddress: z.string().trim().max(500).optional(),
+  invoicePrinterName: z.string().trim().max(500).optional(),
 }).strict();
 
 export const settingsUpdateArgsSchema = z.object({

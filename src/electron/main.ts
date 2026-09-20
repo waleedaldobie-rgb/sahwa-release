@@ -52,6 +52,7 @@ function registerAutomationDiagnostics(databaseDir: string, backupDir: string): 
     if (!window) throw new Error('نافذة الطباعة غير متاحة');
     const pdf = await window.webContents.printToPDF({
       ...options,
+      pageSize: { width: 150000, height: 210000 },
       printBackground: true,
       preferCSSPageSize: true,
       margins: { top: 0, bottom: 0, left: 0, right: 0 }

@@ -486,6 +486,7 @@ export interface UserPreferences {
   shopPhone?: string;
   vatNumber?: string;
   shopAddress?: string;
+  invoicePrinterName?: string;
 }
 
 export interface UpdateOrderStatusRequest {
@@ -552,7 +553,10 @@ declare global {
       savePreferences: (prefs: Partial<UserPreferences>) => Promise<boolean>;
       clearAllData: () => Promise<boolean>;
       sendWhatsAppNotice: (request: WhatsAppSendRequest) => Promise<boolean>;
-      printDirect?: (options?: { deviceName?: string; pageSize?: 'A4' }) => Promise<{ success: boolean; printerName: string }>;
+      listPrinters?: () => Promise<Array<{ name: string; displayName: string; description: string; status: number; isDefault: boolean }>>;
+      printDirect?: (options?: { deviceName?: string; pageSize?: '15x21'; allowDialogFallback?: boolean }) => Promise<{ success: boolean; printerName: string; mode: 'direct' | 'dialog' }>;
+      printWithDialog?: () => Promise<{ success: boolean; printerName: string; mode: 'dialog' }>;
+      saveCurrentPageAsPdf?: () => Promise<{ success: boolean; path?: string; canceled?: boolean }>;
       printDocument: () => void;
       
       db?: {
