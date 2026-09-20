@@ -31,9 +31,7 @@ jobs:
       - name: Install dependencies
         env:
           npm_config_python: ${{ env.pythonLocation }}\python.exe
-        run: |
-          npm ci
-          npm install --no-save --no-package-lock @rollup/rollup-win32-x64-msvc@4.62.4
+        run: npm ci
 
       - name: Verify TypeScript and automated tests
         run: |
