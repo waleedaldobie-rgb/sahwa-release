@@ -190,7 +190,8 @@ async function preparePopulatedFixture() {
         purchaseDate: '2026-08-06',
         paymentMethod: 'card',
         notes: 'سجل شراء معزول للفحص البصري',
-        lines: [{ itemType: 'fabric', itemId: fabric.id, itemName: fabric.name, quantity: 50, unit: 'متر', unitPrice: 42 }]
+        totalAmount: 2100,
+        lines: [{ itemType: 'fabric', itemId: fabric.id, itemName: fabric.name, quantity: 50, unit: 'متر', unitPrice: 42, totalAmount: 2100 }]
       });
     }
     data = await api.getData();
