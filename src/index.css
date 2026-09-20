@@ -1875,6 +1875,8 @@ input:focus, select:focus, textarea:focus {
     max-width: none !important;
     min-height: 0 !important;
     height: auto !important;
+    page-break-after: avoid !important;
+    break-after: avoid-page !important;
     margin: 0 !important;
     padding: 4mm !important;
     box-sizing: border-box !important;
