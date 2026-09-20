@@ -2201,7 +2201,7 @@ input:focus, select:focus, textarea:focus {
   .modal-print-host {
     position: absolute !important;
     inset: 0 !important;
-    display: block !important;
+    display: none !important;
     width: 100% !important;
     height: auto !important;
     padding: 0 !important;
