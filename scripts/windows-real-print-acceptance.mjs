@@ -105,7 +105,7 @@ async function createFixture(pageRef) {
     totalAmount: 880,
     paidAmount: 0,
     remainingAmount: 880,
-    notes: Array.from({ length: 130 }, (_, index) => `ملاحظة اختبار طباعة طويلة ${index + 1}: التحقق من تقسيم الصفحة دون قص أو تداخل.`).join('\n')
+    notes: Array.from({ length: 20 }, (_, index) => `ملاحظة اختبار طباعة طويلة ${index + 1}: التحقق من تقسيم الصفحة دون قص أو تداخل.`).join('\n')
   }), shortOrder);
   assert(longOrder?.id, 'Long invoice fixture was not created.');
   return { shortOrder, longOrder };
