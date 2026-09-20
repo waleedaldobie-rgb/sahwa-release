@@ -108,7 +108,10 @@ export const electronBridge = {
 
   sendWhatsAppNotice: (request: WhatsAppSendRequest) => ipcRenderer.invoke('whatsapp:send', request),
 
-  printDirect: (options?: { deviceName?: string; pageSize?: 'A4' }) => ipcRenderer.invoke('printers:printDirect', options),
+  listPrinters: () => ipcRenderer.invoke('printers:list'),
+  printDirect: (options?: { deviceName?: string; pageSize?: '15x21'; allowDialogFallback?: boolean }) => ipcRenderer.invoke('printers:printDirect', options),
+  printWithDialog: () => ipcRenderer.invoke('printers:printWithDialog'),
+  saveCurrentPageAsPdf: () => ipcRenderer.invoke('printers:savePDF'),
   printDocument: () => window.print()
 };
 
