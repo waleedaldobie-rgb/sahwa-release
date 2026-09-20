@@ -1869,6 +1869,12 @@ input:focus, select:focus, textarea:focus {
     break-after: auto !important;
   }
 
+  /* The preview modal contains a second PrintableInvoice instance. Keep the
+     dedicated hidden print copy as the sole physical/PDF output. */
+  .modal-print-host {
+    display: none !important;
+  }
+
   .invoice-luxury-container {
     page: invoice-page !important;
     width: calc(15cm - 6mm) !important;
