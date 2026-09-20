@@ -20,19 +20,61 @@ jobs:
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 22.x
+          node-version: 22
           cache: npm
 
-      - name: Set up MSVC build environment
-        uses: ilammy/msvc-dev-cmd@v1
+      - name: Set up Python for native modules
+        uses: actions/setup-python@v5
         with:
-          arch: x64
+          python-version: '3.11'
 
       - name: Install dependencies
-        run: npm ci
+        env:
+          npm_config_python: ${{ env.pythonLocation }}\python.exe
+        run: |
+          npm ci
+          npm install --no-save --no-package-lock @rollup/rollup-win32-x64-msvc@4.62.4
+
+      - name: Verify TypeScript and automated tests
+        run: |
+          npm run lint
+          npm test
 
       - name: Build Windows installer
-        run: npm run dist:windows
+        run: npm run dist:windows -- --publish never
+
+      - name: Verify installer output
+        shell: pwsh
+        run: |
+          $installer = Get-ChildItem -Path release -Filter '*Setup*.exe' -File | Select-Object -First 1
+
+          if (-not $installer) {
+            throw 'Setup.exe was not created in the release folder.'
+          }
+
+          Write-Host "Installer: $($installer.FullName)"
+          Write-Host "Size: $($installer.Length) bytes"
+
+          $blockmap = Get-ChildItem -Path release -Filter '*.blockmap' -File | Select-Object -First 1
+          $latest = Get-ChildItem -Path release -Filter 'latest.yml' -File | Select-Object -First 1
+
+          if (-not $blockmap) {
+            throw 'No .blockmap file was created in the release folder.'
+          }
+
+          if (-not $latest) {
+            throw 'latest.yml was not created in the release folder.'
+          }
+
+          $hash = (Get-FileHash -Algorithm SHA256 $installer.FullName).Hash
+
+          "## Sahwa Windows Installer" >> $env:GITHUB_STEP_SUMMARY
+          "" >> $env:GITHUB_STEP_SUMMARY
+          "- File: ``$($installer.Name)``" >> $env:GITHUB_STEP_SUMMARY
+          "- Size: ``$($installer.Length) bytes``" >> $env:GITHUB_STEP_SUMMARY
+          "- SHA-256: ``$hash``" >> $env:GITHUB_STEP_SUMMARY
+          "- Blockmap: ``$($blockmap.Name)``" >> $env:GITHUB_STEP_SUMMARY
+          "- Metadata: ``$($latest.Name)``" >> $env:GITHUB_STEP_SUMMARY
 
       - name: Upload Windows installer artifact
         uses: actions/upload-artifact@v4
@@ -43,4 +85,4 @@ jobs:
             release/*.blockmap
             release/latest.yml
           if-no-files-found: error
-          retention-days: 14
+          retention-days: 30
