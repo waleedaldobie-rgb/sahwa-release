@@ -83,6 +83,8 @@ export const PrintableInvoice: React.FC<PrintableInvoiceProps> = ({ invoice, ord
   const deliveryDate = order?.deliveryDate || '--';
   const thobeType = order?.thobeTypeName || '--';
   const fabricName = order?.fabricName?.trim() || '--';
+  const fabricColor = order?.fabricColor?.trim() || '';
+  const fabricDisplay = fabricColor ? `${fabricName} - ${fabricColor}` : fabricName;
   const handType = valueOf(sd, 'sleeveType', '--');
   const handMeasure = valueOf(m, 'sleeveLength', '--');
   const handOptions = ['cuff1', 'cuff2', 'cuff3', 'cuff4', 'cuff5'].map((key, index) => ({
@@ -197,7 +199,7 @@ export const PrintableInvoice: React.FC<PrintableInvoiceProps> = ({ invoice, ord
 
             <MeasurementCell label="الوسع" value={valueOf(m, 'bottomSweep')} />
             <MeasurementCell label="نوع الثوب" value={thobeType} />
-            <MeasurementCell label="اسم القماش" value={fabricName} />
+            <MeasurementCell label="اسم القماش" value={fabricDisplay} />
           </div>
         </section>
 

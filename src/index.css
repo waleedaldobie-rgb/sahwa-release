@@ -1434,7 +1434,7 @@ input:focus, select:focus, textarea:focus {
 }
 
 .invoice-value-new {
-  font-size: 13px;
+  font-size: 14px;
   font-weight: 900;
   color: #000000;
   flex-shrink: 0;
@@ -1540,7 +1540,7 @@ input:focus, select:focus, textarea:focus {
   max-width: 100%;
   margin: 0;
   padding: 2px 4px;
-  font-size: 12px;
+  font-size: 13px;
 }
 
 .hand-cuffs-grid {
@@ -2051,7 +2051,7 @@ input:focus, select:focus, textarea:focus {
     min-width: 34px !important;
     margin: 0 3px !important;
     padding: 2px 4px !important;
-    font-size: 10.5px !important;
+    font-size: 11.5px !important;
     border-width: 1.5px !important;
   }
 
@@ -2070,7 +2070,7 @@ input:focus, select:focus, textarea:focus {
     width: 100% !important;
     margin: 0 !important;
     padding: 2px 3px !important;
-    font-size: 9.5px !important;
+    font-size: 10.5px !important;
   }
 
   .cuff-box {
