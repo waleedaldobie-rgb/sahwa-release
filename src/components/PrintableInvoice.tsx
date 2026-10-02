@@ -8,6 +8,7 @@ export interface PrintableInvoiceProps {
   invoice: Invoice;
   order?: Order | null;
   garment?: OrderGarment;
+  allGarments?: OrderGarment[];
   preferences?: UserPreferences | null;
   showOnScreen?: boolean;
 }
@@ -63,7 +64,7 @@ const MiniDrawingBox = ({ label, Drawing, drawingType, drawingShape }: { label: 
   </div>
 );
 
-export const PrintableInvoice: React.FC<PrintableInvoiceProps> = ({ invoice, order, garment, preferences, showOnScreen = false }) => {
+export const PrintableInvoice: React.FC<PrintableInvoiceProps> = ({ invoice, order, garment, allGarments, preferences, showOnScreen = false }) => {
   if (!invoice) return null;
 
   const shopName = preferences?.shopName || 'صهوة للخياطة الرجالية';
@@ -200,7 +201,16 @@ export const PrintableInvoice: React.FC<PrintableInvoiceProps> = ({ invoice, ord
 
             <MeasurementCell label="الوسع" value={valueOf(m, 'bottomSweep')} />
             <MeasurementCell label="نوع الثوب" value={thobeType} />
-            <MeasurementCell label="اسم القماش" value={fabricDisplay} />
+            <div className="invoice-measure-cell-new measurement-grid-row">
+              <span className="invoice-label-new">اسم القماش</span>
+              <span className="invoice-value-new">
+                {allGarments?.length
+                  ? allGarments.map((item, index) => (
+                    <span className="block" key={item.id}>{index + 1}. {item.fabricName} - {item.fabricColor}</span>
+                  ))
+                  : fabricDisplay}
+              </span>
+            </div>
           </div>
         </section>
 

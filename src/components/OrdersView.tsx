@@ -573,7 +573,7 @@ export const OrdersView: React.FC<OrdersViewProps> = ({
 
   const handlePrintOrderSheet = (order: Order, garmentId?: string) => {
     const firstGarment = order.garments?.[0];
-    setSelectedPrintGarmentId(garmentId || firstGarment?.id || '');
+    setSelectedPrintGarmentId(garmentId ?? selectedPrintGarmentId ?? firstGarment?.id ?? '');
     setPrintableOrder(order);
     setTimeout(() => {
       window.print();
@@ -584,7 +584,8 @@ export const OrdersView: React.FC<OrdersViewProps> = ({
     <div className="view-wrapper" dir="rtl">
       {/* Printable Area */}
       {printableOrder && (() => {
-        const selectedGarment = printableOrder.garments?.find((garment) => garment.id === selectedPrintGarmentId);
+        const isPrintingAllGarments = selectedPrintGarmentId === '__ALL_GARMENTS__';
+        const selectedGarment = isPrintingAllGarments ? undefined : printableOrder.garments?.find((garment) => garment.id === selectedPrintGarmentId);
         const sourceInvoice = invoices.find((invoice) => invoice.orderId === printableOrder.id);
         const printableInvoice: Invoice = {
           id: sourceInvoice?.id || `INV-${printableOrder.id}`,
@@ -605,7 +606,7 @@ export const OrdersView: React.FC<OrdersViewProps> = ({
         };
         return (
           <div className="hidden-on-screen">
-            <PrintableInvoice invoice={printableInvoice} order={printableOrder} garment={selectedGarment} preferences={userPreferences} />
+            <PrintableInvoice invoice={printableInvoice} order={printableOrder} garment={selectedGarment} allGarments={isPrintingAllGarments ? printableOrder.garments : undefined} preferences={userPreferences} />
           </div>
         );
       })()}
@@ -1163,6 +1164,7 @@ export const OrdersView: React.FC<OrdersViewProps> = ({
                   className="rounded-xl border-2 border-[#E5E7EB] bg-white px-3 py-2 text-xs font-black text-[#111111]"
                 >
                   {selectedOrder.garments!.map((garment) => <option key={garment.id} value={garment.id}>الثوب {garment.garmentNumber} - {garment.fabricName} - {garment.fabricColor}</option>)}
+                  <option value="__ALL_GARMENTS__">جميع الثياب في فاتورة واحدة</option>
                 </select>
               )}
               <Button variant="secondary" onClick={() => handlePrintOrderSheet(selectedOrder!)} icon={<Printer className="w-4 h-4" />}>طباعة الفاتورة</Button>
