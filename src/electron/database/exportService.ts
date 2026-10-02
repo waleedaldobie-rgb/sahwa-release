@@ -138,6 +138,7 @@ export function exportFullDataAsJson(db: Database.Database, includeArchivedNotif
     fabricConsumptionMeters: order.fabric_consumption_meters,
     fabricBuyPriceAtOrder: order.fabric_buy_price_at_order,
     garmentCount: order.garment_count,
+    garments: parseJsonArray(order.garments_json),
     orderDate: order.order_date,
     deliveryDate: order.delivery_date,
     status: order.status,

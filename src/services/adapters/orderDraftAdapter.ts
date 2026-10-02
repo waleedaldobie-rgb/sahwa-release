@@ -112,6 +112,7 @@ export function buildOrderDraft(orderData: Partial<Order>, context: OrderBuildCo
     fabricConsumptionMeters: requiredMeters,
     fabricBuyPriceAtOrder: fabricBuyPrice,
     garmentCount,
+    garments: orderData.garments,
     initialPaymentMethod: orderData.initialPaymentMethod || 'cash',
     materialUsages,
     materialCost,

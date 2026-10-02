@@ -14,6 +14,7 @@ import { migration012 } from './012_cash_adjustment_whitelist';
 import { migration013 } from './013_inventory_wac_movement_cost';
 import { migration014 } from './014_notifications_lifecycle';
 import { migration015 } from './015_visible_customer_invoice_numbers';
+import { migration016 } from './016_order_garments';
 
 export const MIGRATIONS: Migration[] = [
   migration001,
@@ -30,5 +31,6 @@ export const MIGRATIONS: Migration[] = [
   migration012,
   migration013,
   migration014,
-  migration015
+  migration015,
+  migration016
 ].sort((a, b) => a.version - b.version);

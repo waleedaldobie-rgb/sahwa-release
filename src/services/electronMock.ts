@@ -826,8 +826,9 @@ export function initElectronMock() {
       await db.transaction(async (draft) => {
         const settings = await window.electronAPI.getSettings();
         const rate = settings.fabricConsumptionRatePerGarment || 3.5;
-        const garmentCount = orderData.garmentCount || 1;
-        const requiredMeters = garmentCount * rate;
+        const garments = Array.isArray(orderData.garments) && orderData.garments.length > 0 ? orderData.garments : [{ fabricId: orderData.fabricId, fabricName: orderData.fabricName || 'قماش', quantity: orderData.garmentCount || 1 }];
+        const garmentCount = garments.reduce((sum, garment) => sum + Number(garment.quantity || 0), 0);
+        const requiredMeters = garments.reduce((sum, garment) => sum + Number(garment.quantity || 0) * rate, 0);
         const orderNumber = orderData.orderNumber || nextMockOrderNumber(draft.orders);
         const initialStatus = assertSafeInitialOrderStatus(orderData.status);
         const initialPaymentMethod = assertValidPaymentMethod((orderData as any).initialPaymentMethod || 'cash');
@@ -838,20 +839,24 @@ export function initElectronMock() {
         if (settlement.overpaymentAmount > 0 && !orderData.customerId) throw new Error('لا يمكن تسجيل overpayment دون ربط الطلب بعميل');
         const { totalAmount, paidAmount, remainingAmount, cashReceived, overpaymentAmount } = settlement;
         const orderId = orderData.id || createSafeId('ORD');
-        let fabricMovement: StockMovement | undefined;
         let fabricBuyPrice = orderData.fabricBuyPriceAtOrder || 0;
 
         // Check stock and record a sale movement atomically.
-        if (orderData.fabricId) {
-          const fab = draft.fabrics.find(f => f.id === orderData.fabricId);
+        const firstFabric = garments.find((garment) => garment.fabricId);
+        if (firstFabric?.fabricId) {
+          const fab = draft.fabrics.find(f => f.id === firstFabric.fabricId);
           if (!fab) throw new Error('القماش المختار غير موجود في المخزون');
           fabricBuyPrice = fab.purchasePrice || fabricBuyPrice;
-          fabricMovement = insertStockMovementInDraft(draft, 'fabric', orderData.fabricId, -requiredMeters, 'sale', 'استهلاك قماش للطلب', { type: 'order', id: orderId, number: orderNumber });
         }
 
         const materialUsages: OrderMaterialUsage[] = [];
-        if (orderData.fabricId && fabricMovement) {
-          const fabricUsage = buildFabricMaterialUsage(orderId, orderData.fabricId, orderData.fabricName || 'قماش', requiredMeters, fabricBuyPrice, fabricMovement, new Date().toISOString());
+        for (const garment of garments) {
+          if (!garment.fabricId) continue;
+          const fab = draft.fabrics.find(f => f.id === garment.fabricId);
+          if (!fab) throw new Error('القماش المختار غير موجود في المخزون');
+          const quantity = Number(garment.quantity || 1) * rate;
+          const fabricMovement = insertStockMovementInDraft(draft, 'fabric', garment.fabricId, -quantity, 'sale', 'استهلاك قماش للطلب', { type: 'order', id: orderId, number: orderNumber });
+          const fabricUsage = buildFabricMaterialUsage(orderId, garment.fabricId, garment.fabricName || fab.name, quantity, fab.purchasePrice || 0, fabricMovement, new Date().toISOString());
           appendMaterialUsage(draft, fabricUsage);
           materialUsages.push(fabricUsage);
         }

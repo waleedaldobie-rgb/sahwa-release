@@ -121,11 +121,11 @@ function applyRestorePayload(db: Database.Database, parsed: RestorePayload): voi
     INSERT INTO orders (
       id, order_number, customer_id, customer_name, customer_phone,
       thobe_type_id, thobe_type_name, fabric_id, fabric_name, fabric_color,
-      fabric_consumption_meters, fabric_buy_price_at_order, garment_count,
+      fabric_consumption_meters, fabric_buy_price_at_order, garment_count, garments_json,
       order_date, delivery_date, status, total_amount, paid_amount, remaining_amount,
       cash_received, overpayment_amount, cancellation_writeoff_amount,
       is_custom_measurement, measurements_json, style_details_json, notes, created_at
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `);
 
   for (const o of parsed.orders) {
@@ -141,7 +141,7 @@ function applyRestorePayload(db: Database.Database, parsed: RestorePayload): voi
       o.thobeTypeId || null, o.thobeTypeName || 'ثوب', o.fabricId || null,
       o.fabricName || 'قماش', o.fabricColor || 'أبيض',
       o.fabricConsumptionMeters ?? 3.5, o.fabricBuyPriceAtOrder ?? 0,
-      o.garmentCount ?? 1, o.orderDate, o.deliveryDate, o.status || 'new',
+      o.garmentCount ?? 1, JSON.stringify(o.garments || []), o.orderDate, o.deliveryDate, o.status || 'new',
       total, paid, remaining, cashReceived, overpaymentAmount, cancellationWriteoffAmount,
       o.isCustomMeasurement ? 1 : 0,
       JSON.stringify(normalizeMeasurements(o.measurements)), JSON.stringify(normalizeStyleDetails(o.styleDetails)),

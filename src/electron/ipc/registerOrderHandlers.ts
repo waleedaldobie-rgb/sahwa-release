@@ -58,6 +58,14 @@ export function registerOrderHandlers(deps: OrderHandlersDeps): void {
   });
 
   const mapOrderRows = (rows: any[]) => {
+    const parseGarments = (value: unknown) => {
+      try {
+        const parsed = JSON.parse(String(value || '[]'));
+        return Array.isArray(parsed) ? parsed : [];
+      } catch {
+        return [];
+      }
+    };
     const materialRows = orderRepository.listMaterialUsages();
     const materialsByOrder = new Map<string, OrderMaterialUsage[]>();
     for (const row of materialRows) {
@@ -98,6 +106,7 @@ export function registerOrderHandlers(deps: OrderHandlersDeps): void {
         fabricConsumptionMeters: o.fabric_consumption_meters,
         fabricBuyPriceAtOrder: o.fabric_buy_price_at_order,
         garmentCount: o.garment_count,
+        garments: parseGarments(o.garments_json),
         materialUsages,
         materialCost,
         profit: round2((o.total_amount || 0) - materialCost),

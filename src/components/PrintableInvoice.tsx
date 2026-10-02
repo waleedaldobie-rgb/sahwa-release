@@ -1,12 +1,13 @@
 // @ts-nocheck
 import React from 'react';
-import { Invoice, Order, UserPreferences } from '../types';
+import { Invoice, Order, OrderGarment, UserPreferences } from '../types';
 import { SahwaLogo } from './SahwaLogo';
 import { NeckDrawing, PocketDrawing, JabzourTypeDrawing, JabzourShapeDrawing, InvoiceDrawingProps } from './InvoiceDrawings';
 
 export interface PrintableInvoiceProps {
   invoice: Invoice;
   order?: Order | null;
+  garment?: OrderGarment;
   preferences?: UserPreferences | null;
   showOnScreen?: boolean;
 }
@@ -62,7 +63,7 @@ const MiniDrawingBox = ({ label, Drawing, drawingType, drawingShape }: { label: 
   </div>
 );
 
-export const PrintableInvoice: React.FC<PrintableInvoiceProps> = ({ invoice, order, preferences, showOnScreen = false }) => {
+export const PrintableInvoice: React.FC<PrintableInvoiceProps> = ({ invoice, order, garment, preferences, showOnScreen = false }) => {
   if (!invoice) return null;
 
   const shopName = preferences?.shopName || 'صهوة للخياطة الرجالية';
@@ -81,9 +82,9 @@ export const PrintableInvoice: React.FC<PrintableInvoiceProps> = ({ invoice, ord
   const customerPhone = order?.customerPhone || invoice.customerPhone || '--';
   const invoiceDate = order?.orderDate || invoice.orderDate || '--';
   const deliveryDate = order?.deliveryDate || '--';
-  const thobeType = order?.thobeTypeName || '--';
-  const fabricName = order?.fabricName?.trim() || '--';
-  const fabricColor = order?.fabricColor?.trim() || '';
+  const thobeType = garment?.thobeTypeName || order?.thobeTypeName || '--';
+  const fabricName = garment?.fabricName?.trim() || order?.fabricName?.trim() || '--';
+  const fabricColor = garment?.fabricColor?.trim() || order?.fabricColor?.trim() || '';
   const fabricDisplay = fabricColor ? `${fabricName} - ${fabricColor}` : fabricName;
   const handType = valueOf(sd, 'sleeveType', '--');
   const handMeasure = valueOf(m, 'sleeveLength', '--');

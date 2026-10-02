@@ -4,10 +4,10 @@ export interface DatabaseSettings {
   autoBackupIntervalHours: number; // default 1 hour
   maxBackupFiles: number; // default 14
   lastBackupTimestamp?: string;
-  schemaVersion: number; // current: 15
+  schemaVersion: number; // current: 16
 }
 
-export const CURRENT_SCHEMA_VERSION = 15;
+export const CURRENT_SCHEMA_VERSION = 16;
 
 export const CREATE_TABLES_SQL = `
 -- Enable PRAGMA FKs and WAL
@@ -99,6 +99,7 @@ CREATE TABLE IF NOT EXISTS orders (
   fabric_consumption_meters REAL NOT NULL DEFAULT 3.5,
   fabric_buy_price_at_order REAL NOT NULL DEFAULT 0,
   garment_count INTEGER NOT NULL DEFAULT 1,
+  garments_json TEXT NOT NULL DEFAULT '[]',
   order_date TEXT NOT NULL,
   delivery_date TEXT NOT NULL,
   status TEXT NOT NULL DEFAULT 'new',

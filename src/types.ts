@@ -346,6 +346,7 @@ export interface Order {
   fabricConsumptionMeters?: number;
   fabricBuyPriceAtOrder?: number;
   garmentCount?: number;
+  garments?: OrderGarment[];
   initialPaymentMethod?: PaymentMethod;
   materialUsages?: OrderMaterialUsageInput[] | OrderMaterialUsage[];
   materialCost?: number;
@@ -398,6 +399,17 @@ export interface Invoice {
   overpaymentAmount?: number;
   cancellationWriteoffAmount?: number;
   payments: PaymentRecord[];
+}
+
+export interface OrderGarment {
+  id: string;
+  garmentNumber: number;
+  thobeTypeId?: string;
+  thobeTypeName: string;
+  fabricId?: string;
+  fabricName: string;
+  fabricColor: string;
+  quantity: number;
 }
 
 export interface FabricItem {
