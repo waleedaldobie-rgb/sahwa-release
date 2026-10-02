@@ -278,7 +278,7 @@ describe('db.transaction - Atomic Operations & Rollback Tests', () => {
       ...DEFAULT_STYLE_DETAILS,
       neckType: 'قلاب',
       neckShape: 'فرنسي',
-      neckPadding: 'بلاستيك حديد',
+      neckPadding: 'كبس حديد',
       chestPocketStyle: 'جيب مربع',
       chestPocketWidth: '13',
       chestPocketDrop: '7',

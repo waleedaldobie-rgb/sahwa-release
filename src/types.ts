@@ -32,7 +32,7 @@ export interface CustomerStyleDetails {
   neckHeightHeader?: string; // ارتفاع الرقبة
   neckType: string; // نوع الرقبة
   neckShape: string; // شكل الرقبة
-  neckPadding?: string; // حشوة الرقبة (حشوة عادي / حشوة دبل / واحد حشوة دبل / واحد حشوة سنجل)
+  neckPadding?: string; // خيار الرقبة (بلاستيك مخفي / كبس حديد)
   neckLining: string; // بطانة الرقبة
   neckNotes?: string; // ملاحظات الرقبة
 

@@ -486,7 +486,7 @@ export const MeasurementsTableForm = React.memo<MeasurementsTableFormProps>(({
                     className={`${inputClass} w-20`}
                   />
                   <div className="flex flex-wrap gap-1.5">
-                    {(['بلاستيك مخفي', 'بلاستيك حديد'] as const).map((type) => (
+                    {(['بلاستيك مخفي', 'كبس حديد'] as const).map((type) => (
                       <OptionChip key={type} label={type} selected={details.neckPadding === type} onClick={() => updateStyle('neckPadding', type)} />
                     ))}
                   </div>
