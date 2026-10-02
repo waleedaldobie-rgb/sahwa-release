@@ -1,4 +1,4 @@
-import { Order, OrderMaterialUsage, StockMovement } from '../../types';
+import { Order, OrderGarment, OrderMaterialUsage } from '../../types';
 import { normalizeMeasurements, normalizeStyleDetails } from '../../services/shared/measurementDefaults';
 import { round2 } from '../../services/shared/inventoryRules';
 import { assertSafeInitialOrderStatus, assertValidOrderAmounts, calculateMaterialCost, calculateOrderAmounts, materialSignature } from '../../services/shared/orderRules';
@@ -58,13 +58,16 @@ export class OrderService {
 
     const rate = Number(fabricConsumptionRate || 3.5);
     if (!Number.isFinite(rate) || rate <= 0) throw new Error('معدل استهلاك القماش غير صالح');
-    const garmentCount = Number(orderData.garmentCount ?? 1);
+    const garments: OrderGarment[] = Array.isArray(orderData.garments) && orderData.garments.length > 0
+      ? orderData.garments
+      : [{ id: createSafeId('GAR'), garmentNumber: 1, thobeTypeId: orderData.thobeTypeId, thobeTypeName: orderData.thobeTypeName || 'ثوب', fabricId: orderData.fabricId, fabricName: orderData.fabricName || 'قماش', fabricColor: orderData.fabricColor || 'أبيض', quantity: Number(orderData.garmentCount ?? 1) }];
+    const garmentCount = garments.reduce((sum, garment) => sum + Number(garment.quantity || 0), 0);
     if (!Number.isInteger(garmentCount) || garmentCount < 1) throw new Error('عدد الثياب يجب أن يكون عدداً صحيحاً لا يقل عن 1');
     const requestedCashReceived = Number(orderData.cashReceived ?? orderData.paidAmount ?? 0);
     if (!Number.isFinite(requestedCashReceived) || requestedCashReceived < 0) throw new Error('النقد المستلم غير صالح');
     const requestedAppliedPaid = Math.min(requestedCashReceived, Number(orderData.totalAmount ?? 0));
     const { total: validatedTotal, paid: validatedPaid } = assertValidOrderAmounts(orderData.totalAmount ?? 0, requestedAppliedPaid);
-    const requiredMeters = garmentCount * rate;
+    const requiredMeters = garments.reduce((sum, garment) => sum + Number(garment.quantity || 0) * rate, 0);
     const tx = this.db.transaction(() => {
       const orderId = orderData.id || createSafeId('ORD');
       const orderNumber = orderData.orderNumber || this.orderRepository.nextOrderNumber();
@@ -82,15 +85,9 @@ export class OrderService {
       const paymentMethod = assertValidPaymentMethod((orderData as any).initialPaymentMethod ?? 'cash');
       const createdAt = new Date().toISOString();
 
-      let fabricBuyPrice = 0;
-      let fabricMovement: StockMovement | undefined;
-      if (orderData.fabricId) {
-        const fabricMeta = this.inventoryService.getMeta('fabric', orderData.fabricId);
-        fabricBuyPrice = fabricMeta.purchasePrice || 0;
-        fabricMovement = this.inventoryService.recordMovement('fabric', orderData.fabricId, -requiredMeters, 'sale', 'استهلاك قماش للطلب', {
-          type: 'order', id: orderId, number: orderNumber
-        });
-      }
+      const firstGarment = garments[0];
+      const firstFabricMeta = firstGarment.fabricId ? this.inventoryService.getMeta('fabric', firstGarment.fabricId) : undefined;
+      const fabricBuyPrice = firstFabricMeta?.purchasePrice || 0;
 
       this.orderWriteRepository.insertOrder({
         id: orderId,
@@ -106,6 +103,7 @@ export class OrderService {
         fabricConsumptionMeters: requiredMeters,
         fabricBuyPriceAtOrder: fabricBuyPrice,
         garmentCount,
+        garmentsJson: JSON.stringify(garments),
         orderDate,
         deliveryDate: orderData.deliveryDate || orderDate,
         status: initialStatus,
@@ -123,19 +121,18 @@ export class OrderService {
       });
 
       const materialUsages: OrderMaterialUsage[] = [];
-      if (orderData.fabricId && fabricMovement) {
+      for (const garment of garments) {
+        if (!garment.fabricId) continue;
+        const fabricMeta = this.inventoryService.getMeta('fabric', garment.fabricId);
+        const quantity = Number(garment.quantity || 1) * rate;
+        const fabricMovement = this.inventoryService.recordMovement('fabric', garment.fabricId, -quantity, 'sale', 'استهلاك قماش للطلب', {
+          type: 'order', id: orderId, number: orderNumber
+        });
         const usage: OrderMaterialUsage = {
-          id: createSafeId('OMU-FABRIC'),
-          orderId,
-          itemType: 'fabric',
-          itemId: orderData.fabricId,
-          itemName: orderData.fabricName || 'قماش',
-          quantity: requiredMeters,
-          unit: 'متر',
-          unitCostAtUsage: fabricBuyPrice,
-          totalCost: round2(requiredMeters * fabricBuyPrice),
-          sourceMovementId: fabricMovement.id,
-          createdAt
+          id: createSafeId('OMU-FABRIC'), orderId, itemType: 'fabric', itemId: garment.fabricId,
+          itemName: garment.fabricName || fabricMeta.name, quantity, unit: 'متر',
+          unitCostAtUsage: fabricMeta.purchasePrice || 0, totalCost: round2(quantity * (fabricMeta.purchasePrice || 0)),
+          sourceMovementId: fabricMovement.id, createdAt
         };
         this.orderWriteRepository.insertMaterialUsage({ ...usage, itemId: usage.itemId || '', sourceMovementId: usage.sourceMovementId || '' });
         materialUsages.push(usage);
@@ -285,7 +282,10 @@ export class OrderService {
 
       const rate = Number(fabricConsumptionRate || 3.5);
       if (!Number.isFinite(rate) || rate <= 0) throw new Error('معدل استهلاك القماش غير صالح');
-      const garmentCount = Number(updatedOrder.garmentCount ?? existing.garment_count ?? 1);
+      const updatedGarments = Array.isArray(updatedOrder.garments) && updatedOrder.garments.length > 0 ? updatedOrder.garments : undefined;
+      const garmentCount = updatedGarments
+        ? updatedGarments.reduce((sum, garment) => sum + Number(garment.quantity || 0), 0)
+        : Number(updatedOrder.garmentCount ?? existing.garment_count ?? 1);
       if (!Number.isInteger(garmentCount) || garmentCount < 1) throw new Error('عدد الثياب يجب أن يكون عدداً صحيحاً لا يقل عن 1');
       const newMeters = garmentCount * rate;
       const oldMaterials = this.orderRepository.listMaterialUsages(updatedOrder.id) as any[];
@@ -369,7 +369,7 @@ export class OrderService {
         id: updatedOrder.id, customerName: updatedOrder.customerName, customerPhone: updatedOrder.customerPhone,
         thobeTypeId: updatedOrder.thobeTypeId, thobeTypeName: updatedOrder.thobeTypeName || 'ثوب',
         fabricId: updatedOrder.fabricId, fabricName: updatedOrder.fabricName || 'قماش', fabricColor: updatedOrder.fabricColor || 'أبيض',
-        garmentCount, fabricConsumptionMeters: newMeters, deliveryDate: updatedOrder.deliveryDate,
+        garmentCount, fabricConsumptionMeters: newMeters, garmentsJson: JSON.stringify(updatedGarments || []), deliveryDate: updatedOrder.deliveryDate,
         status: existing.status, totalAmount: validatedTotal, paidAmount: ledger.paidAmount, remainingAmount,
         cashReceived: settlement.cashReceived, overpaymentAmount: settlement.overpaymentAmount,
         cancellationWriteoffAmount: settlement.cancellationWriteoffAmount,

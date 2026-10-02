@@ -26,7 +26,7 @@ export class OrderWriteRepository {
   insertOrder(row: {
     id: string; orderNumber: string; customerId?: string; customerName?: string; customerPhone?: string;
     thobeTypeId?: string | null; thobeTypeName: string; fabricId?: string | null; fabricName: string; fabricColor: string;
-    fabricConsumptionMeters: number; fabricBuyPriceAtOrder: number; garmentCount: number; orderDate: string; deliveryDate: string;
+    fabricConsumptionMeters: number; fabricBuyPriceAtOrder: number; garmentCount: number; garmentsJson?: string; orderDate: string; deliveryDate: string;
     status: string; totalAmount: number; paidAmount: number; remainingAmount: number;
     cashReceived?: number; overpaymentAmount?: number; cancellationWriteoffAmount?: number;
     isCustomMeasurement: boolean;
@@ -36,15 +36,15 @@ export class OrderWriteRepository {
       INSERT INTO orders (
         id, order_number, customer_id, customer_name, customer_phone,
         thobe_type_id, thobe_type_name, fabric_id, fabric_name, fabric_color,
-        fabric_consumption_meters, fabric_buy_price_at_order, garment_count,
+        fabric_consumption_meters, fabric_buy_price_at_order, garment_count, garments_json,
         order_date, delivery_date, status, total_amount, paid_amount, remaining_amount,
         cash_received, overpayment_amount, cancellation_writeoff_amount,
         is_custom_measurement, measurements_json, style_details_json, notes, created_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(
       row.id, row.orderNumber, row.customerId, row.customerName, row.customerPhone,
       row.thobeTypeId || null, row.thobeTypeName, row.fabricId || null, row.fabricName, row.fabricColor,
-      row.fabricConsumptionMeters, row.fabricBuyPriceAtOrder, row.garmentCount, row.orderDate, row.deliveryDate,
+      row.fabricConsumptionMeters, row.fabricBuyPriceAtOrder, row.garmentCount, row.garmentsJson || '[]', row.orderDate, row.deliveryDate,
       row.status, row.totalAmount, row.paidAmount, row.remainingAmount,
       row.cashReceived || 0, row.overpaymentAmount || 0, row.cancellationWriteoffAmount || 0,
       row.isCustomMeasurement ? 1 : 0, row.measurementsJson, row.styleDetailsJson, row.notes, row.createdAt
@@ -92,7 +92,7 @@ export class OrderWriteRepository {
 
   updateOrder(row: {
     id: string; customerName?: string; customerPhone?: string; thobeTypeId?: string | null; thobeTypeName: string;
-    fabricId?: string | null; fabricName: string; fabricColor: string; garmentCount: number; fabricConsumptionMeters: number;
+    fabricId?: string | null; fabricName: string; fabricColor: string; garmentCount: number; fabricConsumptionMeters: number; garmentsJson?: string;
     deliveryDate: string; status: string; totalAmount: number; paidAmount: number; remainingAmount: number;
     cashReceived?: number; overpaymentAmount?: number; cancellationWriteoffAmount?: number;
     measurementsJson: string; styleDetailsJson: string; notes: string; updatedAt: string;
@@ -101,7 +101,7 @@ export class OrderWriteRepository {
       UPDATE orders SET
         customer_name = ?, customer_phone = ?, thobe_type_id = ?, thobe_type_name = ?,
         fabric_id = ?, fabric_name = ?, fabric_color = ?, garment_count = ?,
-        fabric_consumption_meters = ?, delivery_date = ?, status = ?,
+        fabric_consumption_meters = ?, garments_json = ?, delivery_date = ?, status = ?,
         total_amount = ?, paid_amount = ?, remaining_amount = ?,
         cash_received = ?, overpayment_amount = ?, cancellation_writeoff_amount = ?,
         measurements_json = ?, style_details_json = ?, notes = ?, updated_at = ?
@@ -109,7 +109,7 @@ export class OrderWriteRepository {
     `).run(
       row.customerName, row.customerPhone, row.thobeTypeId || null, row.thobeTypeName,
       row.fabricId || null, row.fabricName, row.fabricColor, row.garmentCount, row.fabricConsumptionMeters,
-      row.deliveryDate, row.status, row.totalAmount, row.paidAmount, row.remainingAmount,
+      row.garmentsJson || '[]', row.deliveryDate, row.status, row.totalAmount, row.paidAmount, row.remainingAmount,
       row.cashReceived || 0, row.overpaymentAmount || 0, row.cancellationWriteoffAmount || 0,
       row.measurementsJson, row.styleDetailsJson, row.notes, row.updatedAt, row.id
     );

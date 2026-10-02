@@ -153,6 +153,8 @@ export const OrdersView: React.FC<OrdersViewProps> = ({
   const [paidAmount, setPaidAmount] = useState<number>(100);
   const [isTotalAmountManuallyEdited, setIsTotalAmountManuallyEdited] = useState(false);
   const [garmentCount, setGarmentCount] = useState<number>(1);
+  const [additionalGarments, setAdditionalGarments] = useState<Array<{ id: string; garmentNumber: number; thobeTypeId: string; thobeTypeName: string; fabricId: string; fabricName: string; fabricColor: string; quantity: number }>>([]);
+  const [selectedPrintGarmentId, setSelectedPrintGarmentId] = useState('');
   const [notes, setNotes] = useState('');
   const [selectedAccessoryId, setSelectedAccessoryId] = useState('');
   const [accessoryQuantity, setAccessoryQuantity] = useState('1');
@@ -274,6 +276,7 @@ export const OrdersView: React.FC<OrdersViewProps> = ({
     initialMeasurementAppliedRef.current = true;
     setIsTotalAmountManuallyEdited(false);
     setGarmentCount(1);
+    setAdditionalGarments([]);
     setSelectedCustomerId('');
     setInlineCustomer(null);
     setIsMeasurementHistoryOpen(false);
@@ -328,6 +331,25 @@ export const OrdersView: React.FC<OrdersViewProps> = ({
 
   const handleRemoveAccessoryMaterial = (itemId: string) => {
     setSelectedMaterials((current) => current.filter((material) => material.itemId !== itemId));
+  };
+
+  const handleAddGarment = () => {
+    const thobe = thobeTypes.find((item) => item.id === selectedThobeTypeId);
+    const fabric = fabrics.find((item) => item.id === selectedFabricId);
+    if (!thobe || !fabric) {
+      showToast('اختر نوع الثوب والقماش أولاً', 'danger');
+      return;
+    }
+    setAdditionalGarments((current) => [...current, {
+      id: createSafeId('GAR'), garmentNumber: current.length + 2, thobeTypeId: thobe.id, thobeTypeName: thobe.name,
+      fabricId: fabric.id, fabricName: fabric.name, fabricColor: fabric.color, quantity: 1
+    }]);
+    setGarmentCount((current) => current + 1);
+  };
+
+  const handleRemoveGarment = (id: string) => {
+    setAdditionalGarments((current) => current.filter((item) => item.id !== id).map((item, index) => ({ ...item, garmentNumber: index + 2 })));
+    setGarmentCount((current) => Math.max(1, current - 1));
   };
 
   const handleCreateOrder = async () => {
@@ -388,6 +410,10 @@ export const OrdersView: React.FC<OrdersViewProps> = ({
       showToast('يرجى اختيار القماش واللون أولاً', 'danger');
       return;
     }
+    const selectedGarments = [{
+      id: 'GAR-1', garmentNumber: 1, thobeTypeId: thobe.id, thobeTypeName: thobe.name,
+      fabricId: fabric.id, fabricName: fabric.name, fabricColor: fabric.color, quantity: Math.max(1, garmentCount - additionalGarments.length)
+    }, ...additionalGarments];
 
     const requiredMeasurements: Array<[keyof CustomerMeasurements, string]> = [
       ['frontLength', 'طول أمام'],
@@ -417,6 +443,7 @@ export const OrdersView: React.FC<OrdersViewProps> = ({
       fabricName: fabric.name,
       fabricColor: fabric.color,
       garmentCount,
+      garments: selectedGarments,
       orderDate,
       deliveryDate,
       status: 'new',
@@ -544,7 +571,9 @@ export const OrdersView: React.FC<OrdersViewProps> = ({
     }
   };
 
-  const handlePrintOrderSheet = (order: Order) => {
+  const handlePrintOrderSheet = (order: Order, garmentId?: string) => {
+    const firstGarment = order.garments?.[0];
+    setSelectedPrintGarmentId(garmentId ?? selectedPrintGarmentId ?? firstGarment?.id ?? '');
     setPrintableOrder(order);
     setTimeout(() => {
       window.print();
@@ -555,6 +584,8 @@ export const OrdersView: React.FC<OrdersViewProps> = ({
     <div className="view-wrapper" dir="rtl">
       {/* Printable Area */}
       {printableOrder && (() => {
+        const isPrintingAllGarments = selectedPrintGarmentId === '__ALL_GARMENTS__';
+        const selectedGarment = isPrintingAllGarments ? undefined : printableOrder.garments?.find((garment) => garment.id === selectedPrintGarmentId);
         const sourceInvoice = invoices.find((invoice) => invoice.orderId === printableOrder.id);
         const printableInvoice: Invoice = {
           id: sourceInvoice?.id || `INV-${printableOrder.id}`,
@@ -575,7 +606,7 @@ export const OrdersView: React.FC<OrdersViewProps> = ({
         };
         return (
           <div className="hidden-on-screen">
-            <PrintableInvoice invoice={printableInvoice} order={printableOrder} preferences={userPreferences} />
+            <PrintableInvoice invoice={printableInvoice} order={printableOrder} garment={selectedGarment} allGarments={isPrintingAllGarments ? printableOrder.garments : undefined} preferences={userPreferences} />
           </div>
         );
       })()}
@@ -997,6 +1028,35 @@ export const OrdersView: React.FC<OrdersViewProps> = ({
                   icon={<CreditCard className="w-4 h-4" />}
                 />
               </div>
+              {additionalGarments.length > 0 && (
+                <div className="mt-5 space-y-3 border-t border-[#F3F4F6] pt-5">
+                  <div className="flex items-center justify-between">
+                    <div><h4 className="text-sm font-black text-[#111111]">تفاصيل الثياب الإضافية</h4><p className="text-[11px] font-bold text-[#6B7280] mt-1">كل ثوب يحتفظ بقماشه ولونه، بينما يبقى السعر إجماليًا للطلب.</p></div>
+                    <Badge variant="slate">{additionalGarments.length + 1} ثياب</Badge>
+                  </div>
+                  {additionalGarments.map((garment) => (
+                    <div key={garment.id} className="grid grid-cols-1 md:grid-cols-[1fr_1fr_auto] gap-3 items-end rounded-xl border border-[#E5E7EB] bg-[#FAFAF8] p-3">
+                      <Select label={`نوع الثوب ${garment.garmentNumber}`} value={garment.thobeTypeId} onChange={(e) => {
+                        const type = thobeTypes.find((item) => item.id === e.target.value);
+                        setAdditionalGarments((current) => current.map((item) => item.id === garment.id ? { ...item, thobeTypeId: e.target.value, thobeTypeName: type?.name || item.thobeTypeName } : item));
+                      }}>
+                        {thobeTypes.map((type) => <option key={type.id} value={type.id}>{type.name}</option>)}
+                      </Select>
+                      <Select label="القماش واللون" value={garment.fabricId} onChange={(e) => {
+                        const fabricItem = fabrics.find((item) => item.id === e.target.value);
+                        if (!fabricItem) return;
+                        setAdditionalGarments((current) => current.map((item) => item.id === garment.id ? { ...item, fabricId: fabricItem.id, fabricName: fabricItem.name, fabricColor: fabricItem.color } : item));
+                      }}>
+                        {fabrics.map((fabricItem) => <option key={fabricItem.id} value={fabricItem.id}>{fabricItem.name} - {fabricItem.color}</option>)}
+                      </Select>
+                      <Button type="button" variant="secondary" onClick={() => handleRemoveGarment(garment.id)}>حذف الثوب</Button>
+                    </div>
+                  ))}
+                </div>
+              )}
+              <div className="mt-4 flex justify-start">
+                <Button type="button" variant="secondary" size="sm" onClick={handleAddGarment} icon={<Plus className="w-4 h-4" />}>إضافة ثوب بقماش آخر</Button>
+              </div>
 
               <div className="mt-5 pt-5 border-t border-[#F3F4F6] space-y-3">
                 <div className="flex items-center justify-between gap-3">
@@ -1096,6 +1156,17 @@ export const OrdersView: React.FC<OrdersViewProps> = ({
               <Button variant="danger" size="sm" onClick={() => setOrderToDelete(selectedOrder)} icon={<Trash2 className="w-4 h-4" />}>حذف الطلب</Button>
             </div>
             <div className="flex gap-3">
+              {(selectedOrder?.garments?.length || 0) > 1 && (
+                <select
+                  aria-label="اختيار الثوب المراد طباعته"
+                  value={selectedPrintGarmentId || selectedOrder?.garments?.[0]?.id || ''}
+                  onChange={(event) => setSelectedPrintGarmentId(event.target.value)}
+                  className="rounded-xl border-2 border-[#E5E7EB] bg-white px-3 py-2 text-xs font-black text-[#111111]"
+                >
+                  {selectedOrder.garments!.map((garment) => <option key={garment.id} value={garment.id}>الثوب {garment.garmentNumber} - {garment.fabricName} - {garment.fabricColor}</option>)}
+                  <option value="__ALL_GARMENTS__">جميع الثياب في فاتورة واحدة</option>
+                </select>
+              )}
               <Button variant="secondary" onClick={() => handlePrintOrderSheet(selectedOrder!)} icon={<Printer className="w-4 h-4" />}>طباعة الفاتورة</Button>
               <Button variant="primary" onClick={() => setIsDetailModalOpen(false)}>إغلاق</Button>
             </div>
