@@ -1189,7 +1189,7 @@ export const OrdersView: React.FC<OrdersViewProps> = ({
         isOpen={isDetailModalOpen}
         onClose={() => setIsDetailModalOpen(false)}
         title={`تفاصيل الطلب #${selectedOrder?.orderNumber}`}
-        maxWidth={detailTab === 'measurements' ? 'full' : '2xl'}
+        maxWidth="full"
         footer={
           <div className="flex items-center justify-between w-full">
             <div className="flex items-center gap-2">
