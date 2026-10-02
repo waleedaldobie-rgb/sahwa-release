@@ -30,7 +30,8 @@ import {
   CircleDollarSign,
   Warehouse,
   Send,
-  MoreHorizontal
+  MoreHorizontal,
+  Pencil
 } from 'lucide-react';
 
 const ORDER_STATUS_STEPS: Array<{ id: OrderStatus; label: string; description: string; icon: React.ReactNode }> = [
@@ -119,6 +120,7 @@ export const OrdersView: React.FC<OrdersViewProps> = ({
   const [measurementDraft, setMeasurementDraft] = useState<Order | null>(initialSelectedOrder || null);
   const [isDetailModalOpen, setIsDetailModalOpen] = useState(!!initialSelectedOrder);
   const [isNewOrderModalOpen, setIsNewOrderModalOpen] = useState(!!openNewOrderTrigger);
+  const [editingOrder, setEditingOrder] = useState<Order | null>(null);
   const [orderToDelete, setOrderToDelete] = useState<Order | null>(null);
   const [orderToCancel, setOrderToCancel] = useState<Order | null>(null);
   const [cancellationReason, setCancellationReason] = useState('');
@@ -163,6 +165,15 @@ export const OrdersView: React.FC<OrdersViewProps> = ({
   const remainingAmount = Math.max(0, totalAmount - paidAmount);
   const selectedCustomer = selectedCustomerId ? customers.find((customer) => customer.id === selectedCustomerId) : undefined;
   const selectedCustomerHistory = selectedCustomer?.measurementHistory || [];
+  const canDeleteSelectedOrder = Boolean(selectedOrder && (() => {
+    const invoice = invoices.find((item) => item.orderId === selectedOrder.id);
+    if (!invoice || selectedOrder.status === 'cancelled') return false;
+    const hasAmount = [
+      selectedOrder.paidAmount, selectedOrder.cashReceived, selectedOrder.overpaymentAmount, selectedOrder.cancellationWriteoffAmount,
+      invoice.paidAmount, invoice.cashReceived, invoice.overpaymentAmount, invoice.cancellationWriteoffAmount
+    ].some((amount) => Math.abs(Number(amount || 0)) > 0.0001);
+    return !hasAmount && invoice.payments.length === 0;
+  })());
 
   const handleUseHistoryForOrder = (historyRecord: MeasurementHistoryRecord) => {
     setNewOrderMeasurements({ ...historyRecord.measurements });
@@ -272,6 +283,7 @@ export const OrdersView: React.FC<OrdersViewProps> = ({
   }, [selectedCustomerId, customers]);
 
   const handleOpenNewOrder = () => {
+    setEditingOrder(null);
     setIsSubmittingOrder(false);
     initialMeasurementAppliedRef.current = true;
     setIsTotalAmountManuallyEdited(false);
@@ -297,6 +309,40 @@ export const OrdersView: React.FC<OrdersViewProps> = ({
     }
     skipNextDirtyCheck.current = true;
     setHasUnsavedChanges(false);
+    setIsNewOrderModalOpen(true);
+  };
+
+  const handleOpenEditOrder = (order: Order) => {
+    const firstGarment = order.garments?.[0];
+    setEditingOrder(order);
+    setIsSubmittingOrder(false);
+    setSelectedCustomerId(order.customerId || '');
+    setInlineCustomer(customers.find((customer) => customer.id === order.customerId) || null);
+    setIsCreatingCustomerInline(false);
+    setSelectedThobeTypeId(firstGarment?.thobeTypeId || order.thobeTypeId || '');
+    setSelectedFabricId(firstGarment?.fabricId || order.fabricId || '');
+    setDeliveryDate(order.deliveryDate);
+    setTotalAmount(order.totalAmount);
+    setPaidAmount(order.paidAmount);
+    setIsTotalAmountManuallyEdited(true);
+    setGarmentCount(order.garmentCount || order.garments?.reduce((sum, garment) => sum + garment.quantity, 0) || 1);
+    setAdditionalGarments((order.garments || []).slice(1).map((garment) => ({ ...garment })));
+    setSelectedMaterials((order.materialUsages || [])
+      .filter((material) => material.itemType === 'accessory')
+      .map((material) => ({
+        itemType: 'accessory' as const,
+        itemId: material.itemId,
+        itemName: material.itemName,
+        quantity: material.quantity,
+        unit: material.unit,
+        unitCostAtUsage: material.unitCostAtUsage || 0
+      })));
+    setNotes(order.notes || '');
+    setNewOrderMeasurements({ ...order.measurements });
+    setNewOrderStyleDetails({ ...order.styleDetails });
+    skipNextDirtyCheck.current = true;
+    setHasUnsavedChanges(false);
+    setIsDetailModalOpen(false);
     setIsNewOrderModalOpen(true);
   };
 
@@ -429,9 +475,10 @@ export const OrdersView: React.FC<OrdersViewProps> = ({
     }
 
     setIsSubmittingOrder(true);
-    const newOrderNumber = '';
+    const isEditing = Boolean(editingOrder);
+    const newOrderNumber = editingOrder?.orderNumber || '';
     const newOrder: Order = {
-      id: createSafeId('ORD'),
+      id: editingOrder?.id || createSafeId('ORD'),
       ...(newOrderNumber ? { orderNumber: newOrderNumber } : {}),
       customerId: customer.id,
       customerNumber: customer.customerNumber,
@@ -444,9 +491,9 @@ export const OrdersView: React.FC<OrdersViewProps> = ({
       fabricColor: fabric.color,
       garmentCount,
       garments: selectedGarments,
-      orderDate,
+      orderDate: editingOrder?.orderDate || orderDate,
       deliveryDate,
-      status: 'new',
+      status: editingOrder?.status || 'new',
       totalAmount,
       paidAmount,
       remainingAmount,
@@ -455,7 +502,7 @@ export const OrdersView: React.FC<OrdersViewProps> = ({
       styleDetails: newOrderStyleDetails,
       notes,
       materialUsages: selectedMaterials,
-      createdAt: new Date().toISOString()
+      createdAt: editingOrder?.createdAt || new Date().toISOString()
     };
 
     try {
@@ -469,8 +516,9 @@ export const OrdersView: React.FC<OrdersViewProps> = ({
         localStorage.removeItem(draftKeyFor(customer.name, customer.phone, 'new-order'));
       } catch { }
       const actualOrderNumber = savedOrder && typeof savedOrder === 'object' ? savedOrder.orderNumber : newOrderNumber;
-      showToast(`تم تسجيل الطلب الجديد رقم (#${actualOrderNumber}) بنجاح!`, 'success');
+      showToast(`${isEditing ? 'تم تعديل الطلب' : 'تم تسجيل الطلب الجديد'} رقم (#${actualOrderNumber}) بنجاح!`, 'success');
       setHasUnsavedChanges(false);
+      setEditingOrder(null);
       setIsNewOrderModalOpen(false);
     } catch {
       showToast('تعذر حفظ الطلب. يرجى المحاولة مرة أخرى.', 'danger');
@@ -484,6 +532,7 @@ export const OrdersView: React.FC<OrdersViewProps> = ({
       setShowDiscardConfirm(true);
       return;
     }
+    setEditingOrder(null);
     setIsNewOrderModalOpen(false);
   };
 
@@ -798,7 +847,7 @@ export const OrdersView: React.FC<OrdersViewProps> = ({
       <Modal
         isOpen={isNewOrderModalOpen}
         onClose={handleCloseNewOrder}
-        title="تسجيل طلب جديد"
+        title={editingOrder ? `تعديل الطلب #${editingOrder.orderNumber}` : 'تسجيل طلب جديد'}
         maxWidth="full"
         footer={
           <div className="flex items-center justify-between w-full">
@@ -818,7 +867,7 @@ export const OrdersView: React.FC<OrdersViewProps> = ({
                   isLoading={isSubmittingOrder}
                   size="lg"
                 >
-                  حفظ الطلب والقياسات (Ctrl+S)
+                  {editingOrder ? 'حفظ تعديل الطلب (Ctrl+S)' : 'حفظ الطلب والقياسات (Ctrl+S)'}
                 </Button>
              </div>
           </div>
@@ -1153,7 +1202,24 @@ export const OrdersView: React.FC<OrdersViewProps> = ({
                   إلغاء الطلب
                 </Button>
               )}
-              <Button variant="danger" size="sm" onClick={() => setOrderToDelete(selectedOrder)} icon={<Trash2 className="w-4 h-4" />}>حذف الطلب</Button>
+              <Button
+                variant="secondary"
+                size="sm"
+                onClick={() => handleOpenEditOrder(selectedOrder)}
+                icon={<Pencil className="w-4 h-4" />}
+              >
+                تعديل الطلب
+              </Button>
+              <Button
+                variant="danger"
+                size="sm"
+                disabled={!canDeleteSelectedOrder}
+                title={canDeleteSelectedOrder ? 'حذف طلب غير مدفوع بلا أي حركة مالية' : 'لا يسمح بالحذف إلا لطلب غير مدفوع بلا أي حركة مالية'}
+                onClick={() => canDeleteSelectedOrder && setOrderToDelete(selectedOrder)}
+                icon={<Trash2 className="w-4 h-4" />}
+              >
+                حذف الطلب
+              </Button>
             </div>
             <div className="flex gap-3">
               {(selectedOrder?.garments?.length || 0) > 1 && (
@@ -1433,16 +1499,15 @@ export const OrdersView: React.FC<OrdersViewProps> = ({
       <ConfirmModal
         isOpen={!!orderToDelete}
         onClose={() => setOrderToDelete(null)}
-        onConfirm={() => {
+        onConfirm={async () => {
           if (orderToDelete && onDeleteOrder) {
-            onDeleteOrder(orderToDelete.id);
+            await onDeleteOrder(orderToDelete.id);
             setOrderToDelete(null);
             setIsDetailModalOpen(false);
-            showToast('تم حذف الطلب بنجاح', 'success');
           }
         }}
         title="حذف الطلب"
-        message={`هل أنت متأكد من حذف الطلب رقم #${orderToDelete?.orderNumber}؟ لا يمكن التراجع عن هذا الإجراء.`}
+        message={`سيتم حذف الطلب رقم #${orderToDelete?.orderNumber} وإرجاع المواد للمخزون. يسمح بذلك فقط إذا كان الطلب غير مدفوع ولا توجد له أي حركة مالية. لا يمكن التراجع عن هذا الإجراء.`}
         confirmLabel="نعم، احذف الطلب"
         variant="danger"
       />
@@ -1452,6 +1517,7 @@ export const OrdersView: React.FC<OrdersViewProps> = ({
         onClose={() => setShowDiscardConfirm(false)}
         onConfirm={() => {
           setShowDiscardConfirm(false);
+          setEditingOrder(null);
           setIsNewOrderModalOpen(false);
         }}
         title="تجاهل التعديلات؟"

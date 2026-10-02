@@ -396,22 +396,40 @@ export class OrderService {
     const deleteTx = this.db.transaction(() => {
       const order = this.orderRepository.findById(orderId);
       if (!order) return;
-      if (order.status !== 'cancelled') {
-        const materials = this.orderRepository.listMaterialUsages(orderId) as any[];
-        for (const material of materials) {
-          if (material.item_id) {
-            this.inventoryService.recordMovement(material.item_type, material.item_id, material.quantity, 'return', 'إرجاع مواد بسبب حذف الطلب', {
-              type: 'order_delete', id: orderId, number: order.order_number
-            });
-          }
-        }
+      const invoice = this.invoiceRepository.findByOrderId(orderId);
+      if (order.status === 'cancelled') {
+        throw new Error('لا يمكن حذف طلب ملغى؛ استخدم الأرشفة للحفاظ على سجل التسوية');
+      }
+      if (!invoice) throw new Error('لا يمكن حذف الطلب لعدم وجود فاتورة مرتبطة للتحقق المالي');
+
+      const payments = parsePaymentLedger(invoice.payments_json);
+      const hasFinancialAmount = [
+        invoice.paid_amount,
+        invoice.cash_received,
+        invoice.overpayment_amount,
+        invoice.cancellation_writeoff_amount,
+        order.paid_amount,
+        order.cash_received,
+        order.overpayment_amount,
+        order.cancellation_writeoff_amount
+      ].some((amount) => Math.abs(Number(amount || 0)) > 0.0001);
+      const hasFinancialLedger = payments.length > 0
+        || this.cashRepository.listAllByOrderId(orderId).length > 0
+        || this.customerCreditRepository.listByOrderId(orderId).length > 0;
+      if (hasFinancialAmount || hasFinancialLedger) {
+        throw new Error('لا يمكن حذف الطلب لأنه مدفوع أو له حركة مالية؛ يمكن حذف الطلبات غير المدفوعة فقط دون أي حركة مالية');
       }
 
-      const invoice = this.invoiceRepository.findByOrderId(orderId);
-      if (invoice) {
-        throw new Error('لا يمكن حذف طلب له سجل مالي؛ استخدم مسار الإلغاء أو الأرشفة دون عكس نقدي تلقائي');
+      const materials = this.orderRepository.listMaterialUsages(orderId) as any[];
+      for (const material of materials) {
+        if (material.item_id) {
+          this.inventoryService.recordMovement(material.item_type, material.item_id, material.quantity, 'return', 'إرجاع مواد بسبب حذف الطلب', {
+            type: 'order_delete', id: orderId, number: order.order_number
+          });
+        }
       }
       this.orderWriteRepository.deleteMaterialUsages(orderId);
+      this.invoiceRepository.deleteByOrderId(orderId);
       this.orderWriteRepository.delete(orderId);
     });
 

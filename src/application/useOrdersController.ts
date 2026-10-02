@@ -102,13 +102,17 @@ export function useOrdersController(session: AppSession) {
   const handleDeleteOrder = async (orderId: string) => {
     const beforeDelete = data ? JSON.parse(JSON.stringify(data)) as typeof data : null;
     await executeCrud('جاري حذف الطلب وإرجاع كمية القماش للمخزون...', async () => {
+      const targetOrder = data?.orders.find((order) => order.id === orderId);
+      const targetInvoice = data?.invoices.find((invoice) => invoice.orderId === orderId);
+      if (targetOrder && data && !canDeleteUnpaidOrder(targetOrder, targetInvoice, data)) {
+        throw new Error('لا يمكن حذف الطلب لأنه مدفوع أو له حركة مالية؛ يمكن حذف الطلبات غير المدفوعة فقط دون أي حركة مالية');
+      }
       if (gateway.deleteOrder) {
         await gateway.deleteOrder(orderId);
         await loadAppData();
         if (beforeDelete) offerDeleteUndo(beforeDelete, 'تم حذف الطلب وإرجاع القماش');
       } else {
         if (!data) return;
-        const targetOrder = data.orders.find((o) => o.id === orderId);
         if (!targetOrder) throw new Error('الطلب غير موجود');
 
         const updatedFabrics = data.fabrics.map((f) => {
@@ -223,4 +227,16 @@ export function useOrdersController(session: AppSession) {
     handleAddPayment,
     handleSendWhatsAppNotice,
   };
+}
+
+function canDeleteUnpaidOrder(order: Order, invoice: Invoice | undefined, data: NonNullable<AppSession['data']>): boolean {
+  if (order.status === 'cancelled' || !invoice) return false;
+  const hasAmount = [
+    order.paidAmount, order.cashReceived, order.overpaymentAmount, order.cancellationWriteoffAmount,
+    invoice.paidAmount, invoice.cashReceived, invoice.overpaymentAmount, invoice.cancellationWriteoffAmount
+  ].some((amount) => Math.abs(Number(amount || 0)) > 0.0001);
+  const hasPaymentLedger = invoice.payments.length > 0;
+  const hasCashMovement = (data.cashTransactions || []).some((transaction) => transaction.orderId === order.id);
+  const hasCustomerCredit = (data.customerCredits || []).some((credit) => credit.orderId === order.id || credit.targetOrderId === order.id);
+  return !hasAmount && !hasPaymentLedger && !hasCashMovement && !hasCustomerCredit;
 }

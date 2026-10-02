@@ -49,4 +49,12 @@ export class CashRepository {
       ORDER BY created_at ASC, rowid ASC
     `).all(orderId);
   }
+
+  listAllByOrderId(orderId: string): any[] {
+    return this.db.prepare(`
+      SELECT * FROM cash_transactions
+      WHERE order_id = ?
+      ORDER BY created_at ASC, rowid ASC
+    `).all(orderId);
+  }
 }

@@ -146,6 +146,15 @@ export class CustomerCreditRepository {
     return this.getHistory(customerId);
   }
 
+  listByOrderId(orderId: string): CustomerCreditRecord[] {
+    const rows = this.db.prepare(`
+      SELECT * FROM customer_credits
+      WHERE order_id = ? OR target_order_id = ?
+      ORDER BY occurred_at ASC, created_at ASC, id ASC
+    `).all(orderId, orderId) as any[];
+    return rows.map((row) => this.toRecord(row));
+  }
+
   private toRecord(row: any): CustomerCreditRecord {
     return {
       id: row.id,
