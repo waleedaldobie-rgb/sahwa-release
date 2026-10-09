@@ -184,10 +184,15 @@
 
 
 @media print {
-  /* All physical printer output targets 15×21cm. */
+  /* Keep the existing default for legacy print surfaces; reports opt into A4 below. */
   @page {
     size: 15cm 21cm;
     margin: 3mm;
+  }
+
+  @page report-page {
+    size: A4 portrait;
+    margin: 10mm;
   }
 
   @page ticket-page {
@@ -303,6 +308,44 @@
     box-sizing: border-box !important;
     page-break-after: always;
     filter: grayscale(100%) !important;
+  }
+
+  /* Financial reports use the standard A4 sheet and may flow across pages. */
+  .printable-report {
+    page: report-page;
+    position: static !important;
+    left: auto !important;
+    top: auto !important;
+    width: auto !important;
+    height: auto !important;
+    min-height: 0 !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    z-index: auto !important;
+    page-break-after: auto !important;
+    filter: none !important;
+  }
+
+  .printable-report table {
+    page-break-inside: auto !important;
+  }
+
+  .printable-report thead {
+    display: table-header-group;
+  }
+
+  /* Remove the on-screen report controls from layout, not only from visibility,
+     so they cannot create trailing blank A4 pages. */
+  .space-y-6:has(> .printable-report) > *:not(.printable-report) {
+    display: none !important;
+  }
+
+  body:has(.printable-report) #root > div,
+  body:has(.printable-report) #root > div > main,
+  body:has(.printable-report) #root > div > main > .p-6 {
+    height: auto !important;
+    min-height: 0 !important;
+    overflow: visible !important;
   }
 
   /* A5 tailoring ticket (one compact page, no trailing blank page) */

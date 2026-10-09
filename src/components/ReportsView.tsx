@@ -236,7 +236,7 @@ export const ReportsView: React.FC<ReportsViewProps> = ({ data, dataRevision, sh
   return (
     <div className="space-y-6 animate-fade-in">
       {/* Printable Report Header */}
-      <div className="hidden print:block printable-area bg-white text-black p-8 font-['Tajawal'] dir-rtl">
+      <div className="hidden print:block printable-area printable-report bg-white text-black p-8 font-['Tajawal'] dir-rtl">
         <div className="border-2 border-black p-6 space-y-4">
           <div className="flex justify-between items-center border-b-2 border-black pb-4">
             <div>
