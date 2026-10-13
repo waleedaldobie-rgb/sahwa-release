@@ -24,6 +24,20 @@ describe('phase 5 data flow - إشعارات وملخص ولوحة ترقيم', 
     expect(patch.notifications).toEqual(listed);
   });
 
+  it('يحمّل شريحة الألوان عبر getColors دون إعادة تحميل كل البيانات', async () => {
+    const colors = [{ id: 'C-1', name: 'أسود', hex: '#000000' }];
+    const api = {
+      getData: vi.fn(async () => ({ colors: [] })),
+      getColors: vi.fn(async () => colors),
+    };
+
+    const patch = await loadDataSlice('colors', api as never);
+
+    expect(api.getColors).toHaveBeenCalledTimes(1);
+    expect(api.getData).not.toHaveBeenCalled();
+    expect(patch.colors).toEqual(colors);
+  });
+
   it('يعيد الطلبات كاملة عند عدم تمرير page ويُرجع items/total عند الترقيم', () => {
     const orders = [{ id: '1' }, { id: '2' }, { id: '3' }];
     expect(paginateOrders(orders)).toEqual(orders);

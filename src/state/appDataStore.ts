@@ -7,6 +7,7 @@ export type DataSliceName = keyof Pick<
   | 'invoices'
   | 'fabrics'
   | 'accessories'
+  | 'colors'
   | 'purchases'
   | 'expenses'
   | 'cashTransactions'
@@ -25,7 +26,7 @@ export interface DataRevision {
 }
 
 export const ALL_DATA_SLICES: readonly DataSliceName[] = [
-  'customers', 'orders', 'invoices', 'fabrics', 'accessories', 'purchases',
+  'customers', 'orders', 'invoices', 'fabrics', 'accessories', 'colors', 'purchases',
   'expenses', 'cashTransactions', 'stockMovements', 'orderMaterialUsages',
   'orderEvents', 'notifications'
 ];
@@ -43,7 +44,7 @@ export function bumpDataRevision(current: DataRevision, slices: readonly DataSli
   if (slices.some((slice) => slice === 'orders' || slice === 'invoices' || slice === 'orderMaterialUsages' || slice === 'orderEvents')) {
     next.orders += 1;
   }
-  if (slices.some((slice) => slice === 'fabrics' || slice === 'accessories' || slice === 'stockMovements' || slice === 'purchases')) {
+  if (slices.some((slice) => slice === 'fabrics' || slice === 'accessories' || slice === 'colors' || slice === 'stockMovements' || slice === 'purchases')) {
     next.inventory += 1;
   }
   if (slices.some((slice) => slice === 'expenses' || slice === 'cashTransactions' || slice === 'purchases')) {
