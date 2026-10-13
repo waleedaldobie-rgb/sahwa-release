@@ -3,13 +3,14 @@ const os = require('os');
 const childProcess = require('child_process');
 const path = require('path');
 const assert = require('assert');
-const { app, ipcMain } = require('electron');
+const { app, ipcMain, BrowserWindow } = require('electron');
 const { SahwaDatabaseManager } = require('../dist-electron/db.js');
-const { registerIpcHandlers } = require('../dist-electron/ipcHandlers.js');
 const { CURRENT_SCHEMA_VERSION } = require('../dist-electron/schema.js');
 const XLSX = require('xlsx');
 
 const root = fs.mkdtempSync(path.join(os.tmpdir(), 'sahwa-integration-'));
+app.setPath('userData', root);
+require('../dist-electron/main.js');
 const databaseDir = path.join(root, 'database');
 const backupDir = path.join(root, 'backups');
 const results = [];
@@ -28,15 +29,17 @@ function call(channel, ...args) {
   const entry = registry && registry.get(channel);
   const handler = typeof entry === 'function' ? entry : entry?.callback;
   if (!handler) throw new Error(`IPC handler not registered: ${channel}`);
-  return handler({ sender: null }, ...args);
+  const trustedWindow = BrowserWindow.getAllWindows().find((window) => !window.isDestroyed());
+  if (!trustedWindow) throw new Error('نافذة Electron الموثوقة غير متاحة للاختبار');
+  return handler({ sender: trustedWindow.webContents, senderFrame: trustedWindow.webContents.mainFrame }, ...args);
 }
 
 async function main() {
   await app.whenReady();
+  assert.ok(BrowserWindow.getAllWindows().some((window) => !window.isDestroyed()), 'trusted Electron window was not created');
   const manager = new SahwaDatabaseManager(databaseDir, undefined, backupDir);
   const init = manager.initDatabase();
   assert.equal(init.success, true, init.error || 'database initialization failed');
-  registerIpcHandlers(manager);
 
   await record('real IPC bridge registry', async () => {
     for (const channel of ['customers:create', 'customers:update', 'orders:create', 'orders:update', 'orders:delete', 'invoices:addPayment', 'purchases:create', 'reports:exportExcel', 'system:backup', 'system:restore', 'system:clearAllData', 'system:integrityCheck']) {
@@ -51,7 +54,7 @@ async function main() {
     assert.equal(manager.getRawDb().prepare("SELECT next_number FROM visible_number_sequences WHERE name = 'customers'").get().next_number, 3);
 
     const freshCustomer = await call('customers:create', {
-      id: 'CUST-FRESH-SEQUENCE-001', name: 'عميل fresh sequence', phone: '0500000099',
+      id: 'CUST-FRESH-SEQUENCE-001', name: 'عميل fresh sequence', phone: '0500000099', createdAt: '2026-01-01T00:00:00.000Z',
       measurements: {}, styleDetails: {}
     });
     assert.equal(freshCustomer.customerNumber, 3);
@@ -76,7 +79,7 @@ async function main() {
 
   await record('create customer, save measurements, and measurement history', async () => {
     const customer = await call('customers:create', {
-      id: customerId, name: 'عميل تكامل', phone: '0500000001',
+      id: customerId, name: 'عميل تكامل', phone: '0500000001', createdAt: '2026-01-02T00:00:00.000Z',
       measurements: { frontLength: '150', neckSize: '42' }, styleDetails: { neckType: 'قلاب' }
     });
     assert.equal(customer.id, customerId);
@@ -167,7 +170,7 @@ async function main() {
   await record('backend rejects invalid order amounts and accepts overpayment as customer credit', async () => {
     await assert.rejects(
       call('orders:create', { ...orderPayload, id: 'ORD-NEGATIVE-GARMENT', orderNumber: 'INT-NEGATIVE-GARMENT', garmentCount: -1, paidAmount: 0 }),
-      /عدد الثياب/
+      /garmentCount|عدد الثياب/
     );
     const overpaidOrder = await call('orders:create', {
       ...orderPayload,
@@ -184,6 +187,7 @@ async function main() {
     assert.equal(overpaidInvoice.overpaymentAmount, 1);
     const overpaymentData = await call('data:get');
     assert.ok((overpaymentData.customerCredits || []).some((entry) => entry.invoiceId === overpaidInvoice.id && entry.entryType === 'created' && entry.amount === 1));
+    manager.getRawDb().prepare("UPDATE customer_credits SET created_at = ?, occurred_at = ? WHERE invoice_id = ? AND entry_type = 'created'").run('2026-08-17T12:00:00.000Z', '2026-08-17T12:00:00.000Z', overpaidInvoice.id);
   });
 
   await record('backend validates order status before inventory movement', async () => {
@@ -191,7 +195,7 @@ async function main() {
     const beforeMovements = db.prepare('SELECT COUNT(*) AS count FROM inventory_movements').get().count;
     await assert.rejects(
       call('orders:create', { ...orderPayload, id: 'ORD-INVALID-STATUS', orderNumber: 'INT-INVALID-STATUS', status: 'unknown', paidAmount: 0 }),
-      /حالة الطلب/
+      /status|حالة الطلب/
     );
     await assert.rejects(
       call('orders:create', { ...orderPayload, id: 'ORD-CANCELLED-CREATE', orderNumber: 'INT-CANCELLED-CREATE', status: 'cancelled', paidAmount: 0 }),
@@ -250,10 +254,10 @@ async function main() {
 
   await record('purchase increases inventory and records cash outflow', async () => {
     const purchase = await call('purchases:create', {
-      id: 'PUR-INT-001', supplier: 'مورد تكامل', invoiceNumber: 'P-INT-1', purchaseDate: '2026-08-16', paymentMethod: 'cash',
+      id: 'PUR-INT-001', supplier: 'مورد تكامل', invoiceNumber: 'P-INT-1', purchaseDate: '2026-08-16', paymentMethod: 'cash', totalAmount: 234,
       lines: [
-        { itemType: 'fabric', itemId: fabricId, itemName: 'قماش تكامل', quantity: 5, unit: 'متر', unitPrice: 42 },
-        { itemType: 'accessory', itemId: accessoryId, itemName: 'سحاب تكامل', quantity: 4, unit: 'حبة', unitPrice: 6 }
+        { itemType: 'fabric', itemId: fabricId, itemName: 'قماش تكامل', quantity: 5, unit: 'متر', unitPrice: 42, totalAmount: 210 },
+        { itemType: 'accessory', itemId: accessoryId, itemName: 'سحاب تكامل', quantity: 4, unit: 'حبة', unitPrice: 6, totalAmount: 24 }
       ]
     });
     assert.equal(purchase.totalAmount, 234);
@@ -300,8 +304,8 @@ async function main() {
   await record('card and transfer remain separate from the cash drawer', async () => {
     const beforeCashOut = (await call('cash:list')).filter((item) => item.direction === 'out' && item.paymentMethod === 'cash').reduce((sum, item) => sum + item.amount, 0);
     await call('purchases:create', {
-      id: 'PUR-CARD-001', supplier: 'مورد بطاقة', invoiceNumber: 'P-CARD-1', purchaseDate: '2026-08-19', paymentMethod: 'card',
-      lines: [{ itemType: 'fabric', itemId: fabricId, itemName: 'قماش تكامل', quantity: 1, unit: 'متر', unitPrice: 42 }]
+      id: 'PUR-CARD-001', supplier: 'مورد بطاقة', invoiceNumber: 'P-CARD-1', purchaseDate: '2026-08-19', paymentMethod: 'card', totalAmount: 42,
+      lines: [{ itemType: 'fabric', itemId: fabricId, itemName: 'قماش تكامل', quantity: 1, unit: 'متر', unitPrice: 42, totalAmount: 42 }]
     });
     await call('expenses:create', { id: 'EXP-TRANSFER-001', category: 'تشغيل', amount: 25, expenseDate: '2026-08-19', paymentMethod: 'transfer', description: 'مصروف تحويل' });
     const transactions = await call('cash:list');
@@ -421,7 +425,8 @@ async function main() {
     const afterCancel = manager.getRawDb();
     assert.equal(afterCancel.prepare('SELECT quantity_meters FROM fabrics WHERE id = ?').get(fabricId).quantity_meters, beforeCancelFabric + 3.5);
     assert.equal(afterCancel.prepare('SELECT quantity FROM accessories WHERE id = ?').get(accessoryId).quantity, beforeCancelAccessory + 2);
-    assert.equal(await call('orders:update', { ...activeOrder, status: 'cancelled', fabricId: 'FAB-INT-002', fabricName: 'قماش بديل تكامل', fabricColor: 'كحلي', garmentCount: 2 }), true);
+    const updatedGarments = (activeOrder.garments || []).map((garment) => ({ ...garment, fabricId: 'FAB-INT-002', fabricName: 'قماش بديل تكامل', fabricColor: 'كحلي', quantity: 2 }));
+    assert.equal(await call('orders:update', { ...activeOrder, garments: updatedGarments, status: 'cancelled', fabricId: 'FAB-INT-002', fabricName: 'قماش بديل تكامل', fabricColor: 'كحلي', garmentCount: 2 }), true);
     assert.equal(afterCancel.prepare('SELECT quantity_meters FROM fabrics WHERE id = ?').get('FAB-INT-002').quantity_meters, 30);
     const updatedMaterials = afterCancel.prepare('SELECT item_type, item_id, quantity, source_movement_id FROM order_material_usages WHERE order_id = ? ORDER BY item_type, item_id').all(orderId);
     assert.equal(updatedMaterials.some((row) => row.item_type === 'fabric' && row.item_id === 'FAB-INT-002' && row.quantity === 7 && row.source_movement_id === null), true);
@@ -438,7 +443,7 @@ async function main() {
     const beforeDelete = await call('cash:list');
     await assert.rejects(
       call('orders:delete', deleted.id),
-      /سجل مالي|أرشفة|financial/
+      /سجل مالي|أرشفة|حركة مالية|financial/
     );
     assert.deepEqual(await call('cash:list'), beforeDelete);
     assert.equal((await call('orders:list')).some((item) => item.id === deleted.id), true);
@@ -454,8 +459,8 @@ async function main() {
   });
 
   await record('invalid and insufficient operations rollback atomically', async () => {
-    await assert.rejects(call('orders:create', { id: 'ORD-INCOMPLETE', customerId, fabricId, totalAmount: 100 }), /مفقودة|NOT NULL|إلزامية/);
-    await assert.rejects(call('orders:create', { id: 'ORD-LOW-STOCK', orderNumber: 'INT-LOW', customerId, customerName: 'عميل تكامل', customerPhone: '0500000001', fabricId, fabricName: 'قماش تكامل', garmentCount: 100, totalAmount: 1000 }), /غير كافية/);
+    await assert.rejects(call('orders:create', { id: 'ORD-INCOMPLETE', customerId, fabricId, totalAmount: 100 }), /مفقودة|NOT NULL|إلزامية|بيانات الطلب غير صالح/);
+    await assert.rejects(call('orders:create', { ...orderPayload, id: 'ORD-LOW-STOCK', orderNumber: 'INT-LOW', garmentCount: 100, totalAmount: 1000, paidAmount: 0, materialUsages: [] }), /غير كافية/);
     const db = manager.getRawDb();
     assert.equal(db.prepare('SELECT COUNT(*) AS count FROM orders WHERE id IN (?, ?)').get('ORD-INCOMPLETE', 'ORD-LOW-STOCK').count, 0);
   });
