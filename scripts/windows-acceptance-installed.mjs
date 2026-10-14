@@ -2,7 +2,10 @@ import { _electron as electron, expect } from '@playwright/test';
 import fs from 'node:fs';
 import path from 'node:path';
 import { execFileSync } from 'node:child_process';
+import { createRequire } from 'node:module';
 import { DatabaseSync } from 'node:sqlite';
+
+const { CURRENT_SCHEMA_VERSION } = createRequire(import.meta.url)('../dist-electron/schema.js');
 
 const executablePath = process.env.SAHWA_EXE;
 const testData = process.env.SAHWA_TEST_DATA || path.join(process.cwd(), 'windows-acceptance-data');
@@ -845,10 +848,15 @@ async function testLegacyMigration() {
   legacyDb.close();
 
   await launchApp({ dataDir: legacyRoot });
-  await waitForAppReady(page);
-  const settings = await page.evaluate(() => window.electronAPI.getSettings());
-  assert(Number(settings.schemaVersion) === 15, `Legacy fixture did not migrate to schemaVersion=15: ${settings.schemaVersion}`);
-  await closeApp();
+  let schemaVersion;
+  try {
+    await waitForAppReady(page);
+    const settings = await page.evaluate(() => window.electronAPI.getSettings());
+    schemaVersion = Number(settings.schemaVersion);
+    assert(schemaVersion === CURRENT_SCHEMA_VERSION, `Legacy fixture did not migrate to schemaVersion=${CURRENT_SCHEMA_VERSION}: ${schemaVersion}`);
+  } finally {
+    await closeApp();
+  }
 
   const migratedDb = new DatabaseSync(storage.databasePath);
   const columns = (table) => migratedDb.prepare(`PRAGMA table_info(${table})`).all().map((row) => row.name);
@@ -880,10 +888,11 @@ async function testLegacyMigration() {
   const legacyCreditRows = Number(migratedDb.prepare('SELECT COUNT(*) AS count FROM customer_credits').get().count);
   assert(legacyCreditRows === 0, 'Legacy migration unexpectedly backfilled customer_credits rows.');
   assert(columns('invoices').includes('visible_invoice_number'), 'Migration 015 missing invoices.visible_invoice_number');
+  assert(columns('orders').includes('garments_json'), 'Migration 016 missing orders.garments_json');
   const verifiedColumns = { customers: columns('customers'), orders: columns('orders'), invoices: columns('invoices'), customer_credits: columns('customer_credits'), notifications: columns('notifications') };
   migratedDb.close();
-  fs.writeFileSync(path.join(evidenceDir, 'legacy-migration-evidence.json'), JSON.stringify({ storage, beforeCounts, afterCounts, schemaVersion: settings.schemaVersion, verifiedColumns, verifiedIndexes: indexes }, null, 2));
-  pass('legacy.schema-v5-migration', 'schemaVersion=5 fixture upgraded to 15 with additive columns/indexes, unchanged rows, visible numbering, and no credit backfill');
+  fs.writeFileSync(path.join(evidenceDir, 'legacy-migration-evidence.json'), JSON.stringify({ storage, beforeCounts, afterCounts, schemaVersion, verifiedColumns, verifiedIndexes: indexes }, null, 2));
+  pass('legacy.schema-v5-migration', `schemaVersion=5 fixture upgraded to ${CURRENT_SCHEMA_VERSION} with additive columns/indexes, unchanged rows, visible numbering, garments_json, and no credit backfill`);
 }
 
 async function testNotificationsLifecycle(pageRef) {
