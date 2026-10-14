@@ -159,7 +159,7 @@ export function useInventoryController(session: AppSession) {
         } else {
           await gateway.createColor(color);
         }
-        await loadAppData();
+        await refreshSlices(['colors']);
       } else {
         const exists = data.colors.some((c) => c.id === color.id);
         const updated = exists
@@ -189,7 +189,7 @@ export function useInventoryController(session: AppSession) {
       if (!data) return;
       if (gateway.deleteColor) {
         await gateway.deleteColor(id);
-        await loadAppData();
+        await refreshSlices(['colors']);
       } else {
         await persistData({ ...data, colors: data.colors.filter((c) => c.id !== id) });
       }

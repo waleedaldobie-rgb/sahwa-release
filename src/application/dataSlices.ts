@@ -8,6 +8,7 @@ export type SliceApi = Pick<
   | 'getInvoices'
   | 'getFabrics'
   | 'getAccessories'
+  | 'getColors'
   | 'getPurchases'
   | 'getExpenses'
   | 'getCashTransactions'
@@ -33,6 +34,8 @@ export async function loadDataSlice(slice: DataSliceName, api: SliceApi): Promis
       return api.getFabrics ? { fabrics: await api.getFabrics() } : {};
     case 'accessories':
       return api.getAccessories ? { accessories: await api.getAccessories() } : {};
+    case 'colors':
+      return api.getColors ? { colors: await api.getColors() } : {};
     case 'purchases':
       return api.getPurchases ? { purchases: await api.getPurchases() } : {};
     case 'expenses':

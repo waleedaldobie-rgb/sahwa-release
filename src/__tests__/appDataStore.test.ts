@@ -11,7 +11,7 @@ describe('partial refresh revisions and derived cache', () => {
     expect(next.orders).toBe(0);
     expect(next.customers).toBe(0);
 
-    const inventoryNext = bumpDataRevision(next, ['fabrics', 'stockMovements']);
+    const inventoryNext = bumpDataRevision(next, ['fabrics', 'colors', 'stockMovements']);
     expect(inventoryNext.global).toBe(2);
     expect(inventoryNext.inventory).toBe(1);
     expect(inventoryNext.accounting).toBe(1);

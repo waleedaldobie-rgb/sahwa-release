@@ -16,6 +16,7 @@ function toSliceApi(gateway: SahwaGateway): SliceApi {
     getInvoices: () => gateway.listInvoices() as ReturnType<NonNullable<SliceApi['getInvoices']>>,
     getFabrics: () => gateway.listFabrics() as ReturnType<NonNullable<SliceApi['getFabrics']>>,
     getAccessories: () => gateway.listAccessories() as ReturnType<NonNullable<SliceApi['getAccessories']>>,
+    getColors: () => gateway.listColors() as ReturnType<NonNullable<SliceApi['getColors']>>,
     getPurchases: () => gateway.listPurchases() as ReturnType<NonNullable<SliceApi['getPurchases']>>,
     getExpenses: () => gateway.listExpenses() as ReturnType<NonNullable<SliceApi['getExpenses']>>,
     getCashTransactions: () => gateway.listCashTransactions() as ReturnType<NonNullable<SliceApi['getCashTransactions']>>,
