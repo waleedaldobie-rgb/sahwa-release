@@ -2,7 +2,10 @@ import { _electron as electron, expect } from '@playwright/test';
 import fs from 'node:fs';
 import path from 'node:path';
 import { execFileSync } from 'node:child_process';
+import { createRequire } from 'node:module';
 import { DatabaseSync } from 'node:sqlite';
+
+const { CURRENT_SCHEMA_VERSION } = createRequire(import.meta.url)('../dist-electron/schema.js');
 
 const executablePath = process.env.SAHWA_EXE;
 const testData = process.env.SAHWA_TEST_DATA || path.join(process.cwd(), 'windows-acceptance-data');
@@ -795,11 +798,15 @@ async function testLegacyMigration() {
   fs.rmSync(legacyRoot, { recursive: true, force: true });
   fs.mkdirSync(legacyRoot, { recursive: true });
 
-  await launchApp({ dataDir: legacyRoot });
-  await waitForDashboard(page);
-  await page.waitForTimeout(500);
-  const storage = await page.evaluate(() => window.electronAPI.automationStorageInfo());
-  await closeApp();
+  let storage;
+  try {
+    await launchApp({ dataDir: legacyRoot });
+    await waitForDashboard(page);
+    await page.waitForTimeout(500);
+    storage = await page.evaluate(() => window.electronAPI.automationStorageInfo());
+  } finally {
+    await closeApp();
+  }
   await new Promise((resolve) => setTimeout(resolve, 500));
   fs.mkdirSync(path.dirname(storage.databasePath), { recursive: true });
   fs.rmSync(storage.databasePath, { force: true });
@@ -844,46 +851,55 @@ async function testLegacyMigration() {
   };
   legacyDb.close();
 
-  await launchApp({ dataDir: legacyRoot });
-  await waitForAppReady(page);
-  const settings = await page.evaluate(() => window.electronAPI.getSettings());
-  assert(Number(settings.schemaVersion) === 15, `Legacy fixture did not migrate to schemaVersion=15: ${settings.schemaVersion}`);
-  await closeApp();
+  let schemaVersion;
+  try {
+    await launchApp({ dataDir: legacyRoot });
+    await waitForAppReady(page);
+    const settings = await page.evaluate(() => window.electronAPI.getSettings());
+    schemaVersion = Number(settings.schemaVersion);
+    assert(schemaVersion === CURRENT_SCHEMA_VERSION, `Legacy fixture did not migrate to schemaVersion=${CURRENT_SCHEMA_VERSION}: ${schemaVersion}`);
+  } finally {
+    await closeApp();
+  }
 
   const migratedDb = new DatabaseSync(storage.databasePath);
-  const columns = (table) => migratedDb.prepare(`PRAGMA table_info(${table})`).all().map((row) => row.name);
-  const indexes = migratedDb.prepare("SELECT name FROM sqlite_master WHERE type = 'index'").all().map((row) => row.name);
-  for (const column of ['customer_number', 'cash_received', 'overpayment_amount', 'cancellation_writeoff_amount']) {
-    if (column === 'customer_number') {
-      assert(columns('customers').includes(column), `Migration 015 missing customers.${column}`);
-    } else {
-      assert(columns('orders').includes(column), `Migration 010 missing orders.${column}`);
-      assert(columns('invoices').includes(column), `Migration 010 missing invoices.${column}`);
+  try {
+    const columns = (table) => migratedDb.prepare(`PRAGMA table_info(${table})`).all().map((row) => row.name);
+    const indexes = migratedDb.prepare("SELECT name FROM sqlite_master WHERE type = 'index'").all().map((row) => row.name);
+    for (const column of ['customer_number', 'cash_received', 'overpayment_amount', 'cancellation_writeoff_amount']) {
+      if (column === 'customer_number') {
+        assert(columns('customers').includes(column), `Migration 015 missing customers.${column}`);
+      } else {
+        assert(columns('orders').includes(column), `Migration 010 missing orders.${column}`);
+        assert(columns('invoices').includes(column), `Migration 010 missing invoices.${column}`);
+      }
     }
+    for (const column of ['operation_id', 'idempotency_key', 'source_entry_id', 'target_invoice_id', 'method', 'actor_id', 'reason', 'occurred_at', 'balance_after']) {
+      assert(columns('customer_credits').includes(column), `Migration 011 missing customer_credits.${column}`);
+    }
+    for (const column of ['status', 'source', 'source_id', 'read_at', 'archived_at', 'retry_count', 'last_error', 'retry_history_json', 'created_at', 'updated_at']) {
+      assert(columns('notifications').includes(column), `Migration 014 missing notifications.${column}`);
+    }
+    for (const indexName of ['idx_customers_customer_number', 'idx_invoices_visible_invoice_number', 'idx_customer_credits_idempotency', 'idx_customer_credits_operation_entry', 'idx_customer_credits_source_entry', 'idx_notifications_source_source_id', 'idx_notifications_active_created']) {
+      assert(indexes.includes(indexName), `Expected migration index is missing: ${indexName}`);
+    }
+    const afterCounts = {
+      customers: Number(migratedDb.prepare('SELECT COUNT(*) AS count FROM customers').get().count),
+      orders: Number(migratedDb.prepare('SELECT COUNT(*) AS count FROM orders').get().count),
+      invoices: Number(migratedDb.prepare('SELECT COUNT(*) AS count FROM invoices').get().count),
+      notifications: Number(migratedDb.prepare('SELECT COUNT(*) AS count FROM notifications').get().count)
+    };
+    assert(JSON.stringify(beforeCounts) === JSON.stringify(afterCounts), `Legacy row counts changed during migration: before=${JSON.stringify(beforeCounts)} after=${JSON.stringify(afterCounts)}`);
+    const legacyCreditRows = Number(migratedDb.prepare('SELECT COUNT(*) AS count FROM customer_credits').get().count);
+    assert(legacyCreditRows === 0, 'Legacy migration unexpectedly backfilled customer_credits rows.');
+    assert(columns('invoices').includes('visible_invoice_number'), 'Migration 015 missing invoices.visible_invoice_number');
+    assert(columns('orders').includes('garments_json'), 'Migration 016 missing orders.garments_json');
+    const verifiedColumns = { customers: columns('customers'), orders: columns('orders'), invoices: columns('invoices'), customer_credits: columns('customer_credits'), notifications: columns('notifications') };
+    fs.writeFileSync(path.join(evidenceDir, 'legacy-migration-evidence.json'), JSON.stringify({ storage, beforeCounts, afterCounts, schemaVersion, verifiedColumns, verifiedIndexes: indexes }, null, 2));
+    pass('legacy.schema-v5-migration', `schemaVersion=5 fixture upgraded to ${CURRENT_SCHEMA_VERSION} with additive columns/indexes, unchanged rows, visible numbering, garments_json, and no credit backfill`);
+  } finally {
+    migratedDb.close();
   }
-  for (const column of ['operation_id', 'idempotency_key', 'source_entry_id', 'target_invoice_id', 'method', 'actor_id', 'reason', 'occurred_at', 'balance_after']) {
-    assert(columns('customer_credits').includes(column), `Migration 011 missing customer_credits.${column}`);
-  }
-  for (const column of ['status', 'source', 'source_id', 'read_at', 'archived_at', 'retry_count', 'last_error', 'retry_history_json', 'created_at', 'updated_at']) {
-    assert(columns('notifications').includes(column), `Migration 014 missing notifications.${column}`);
-  }
-  for (const indexName of ['idx_customers_customer_number', 'idx_invoices_visible_invoice_number', 'idx_customer_credits_idempotency', 'idx_customer_credits_operation_entry', 'idx_customer_credits_source_entry', 'idx_notifications_source_source_id', 'idx_notifications_active_created']) {
-    assert(indexes.includes(indexName), `Expected migration index is missing: ${indexName}`);
-  }
-  const afterCounts = {
-    customers: Number(migratedDb.prepare('SELECT COUNT(*) AS count FROM customers').get().count),
-    orders: Number(migratedDb.prepare('SELECT COUNT(*) AS count FROM orders').get().count),
-    invoices: Number(migratedDb.prepare('SELECT COUNT(*) AS count FROM invoices').get().count),
-    notifications: Number(migratedDb.prepare('SELECT COUNT(*) AS count FROM notifications').get().count)
-  };
-  assert(JSON.stringify(beforeCounts) === JSON.stringify(afterCounts), `Legacy row counts changed during migration: before=${JSON.stringify(beforeCounts)} after=${JSON.stringify(afterCounts)}`);
-  const legacyCreditRows = Number(migratedDb.prepare('SELECT COUNT(*) AS count FROM customer_credits').get().count);
-  assert(legacyCreditRows === 0, 'Legacy migration unexpectedly backfilled customer_credits rows.');
-  assert(columns('invoices').includes('visible_invoice_number'), 'Migration 015 missing invoices.visible_invoice_number');
-  const verifiedColumns = { customers: columns('customers'), orders: columns('orders'), invoices: columns('invoices'), customer_credits: columns('customer_credits'), notifications: columns('notifications') };
-  migratedDb.close();
-  fs.writeFileSync(path.join(evidenceDir, 'legacy-migration-evidence.json'), JSON.stringify({ storage, beforeCounts, afterCounts, schemaVersion: settings.schemaVersion, verifiedColumns, verifiedIndexes: indexes }, null, 2));
-  pass('legacy.schema-v5-migration', 'schemaVersion=5 fixture upgraded to 15 with additive columns/indexes, unchanged rows, visible numbering, and no credit backfill');
 }
 
 async function testNotificationsLifecycle(pageRef) {

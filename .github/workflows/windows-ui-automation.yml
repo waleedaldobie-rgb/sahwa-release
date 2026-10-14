@@ -38,7 +38,6 @@ jobs:
           npm_config_python: ${{ env.pythonLocation }}\python.exe
         run: |
           npm ci
-          npm install --no-save --no-package-lock @playwright/test
 
       - name: Verify source quality and TypeScript
         run: |
