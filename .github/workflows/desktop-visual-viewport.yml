@@ -98,6 +98,25 @@ jobs:
             throw 'Electron binary was not downloaded.'
           }
 
+      - name: Install Poppler PDF utilities
+        shell: pwsh
+        run: |
+          choco install poppler --version=26.9.0 --yes --no-progress
+          if ($LASTEXITCODE -ne 0) { throw 'Poppler installation failed.' }
+          $popplerToolsRoot = Join-Path $env:ChocolateyInstall 'lib\poppler\tools'
+          $popplerBin = Get-ChildItem -Path $popplerToolsRoot -Directory -Filter 'poppler-*' |
+            ForEach-Object { Join-Path $_.FullName 'Library\bin' } |
+            Where-Object {
+              (Test-Path (Join-Path $_ 'pdfinfo.exe')) -and
+              (Test-Path (Join-Path $_ 'pdftotext.exe'))
+            } |
+            Select-Object -First 1
+          if (-not $popplerBin) { throw 'Poppler pdfinfo.exe and pdftotext.exe were not found.' }
+          $env:PATH = "$popplerBin;$env:PATH"
+          $popplerBin | Out-File -FilePath $env:GITHUB_PATH -Append -Encoding utf8
+          & (Join-Path $popplerBin 'pdfinfo.exe') -v
+          & (Join-Path $popplerBin 'pdftotext.exe') -v
+
       - name: Build renderer and Electron files
         shell: pwsh
         env:
